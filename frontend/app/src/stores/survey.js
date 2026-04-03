@@ -212,19 +212,14 @@ export const useSurveyStore = defineStore('survey', () => {
   }
 
   async function saveAnswer(token, questionId, payload) {
-    if (!responseData.value) {
-      console.warn('[saveAnswer] no responseData — skip')
-      return
-    }
+    if (!responseData.value) return
     const responseId = responseData.value.id
-    console.log('[saveAnswer] PATCH response:', responseId, 'question:', questionId, payload)
     try {
       await publicApi.patch(
         `/public/surveys/${token}/responses/${responseId}/answers/${questionId}`,
         payload,
       )
       savedAnswers.value = { ...savedAnswers.value, [questionId]: answers.value[questionId] }
-      console.log('[saveAnswer] saved OK', questionId)
     } catch (e) {
       console.error('[saveAnswer] error:', e)
     }
