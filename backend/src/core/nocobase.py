@@ -75,7 +75,7 @@ class NocoBaseClient:
             base_url=settings.nocobase_api_url,
             timeout=settings.nocobase_timeout,
             headers=headers,
-            proxy=None,  # Игнорируем системные прокси (HTTP_PROXY, HTTPS_PROXY, ALL_PROXY)
+            trust_env=False,  # Игнорируем системные прокси (HTTP_PROXY, HTTPS_PROXY, ALL_PROXY)
         ) as client:
             response = await client.request(
                 method,
