@@ -1,0 +1,92 @@
+name: Deploy to Coolify
+
+run-name: "Coolify deploy for ${{ github.ref_name }} by ${{ github.actor }}"
+
+on:
+  workflow_run:
+    workflows: ["Build Survey to GHCR"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag (commit SHA). Leave empty for 'latest'."
+        required: false
+        default: ''
+        type: string
+      force:
+        description: "Force deploy"
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - name: Determine image tag
+        id: tag
+        run: |
+          if [ -n "${{ inputs.image_tag }}" ]; then
+            echo "tag=${{ inputs.image_tag }}" >> "$GITHUB_OUTPUT"
+          elif [ -n "${{ github.event.workflow_run.head_sha }}" ]; then
+            echo "tag=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=latest" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set image tags in Coolify
+        continue-on-error: true
+        env:
+          COOLIFY_API: ${{ secrets.COOLIFY_API }}
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+          COOLIFY_APP: ${{ secrets.COOLIFY_APP }}
+          IMAGE_TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          if [ -z "$COOLIFY_API" ] || [ -z "$COOLIFY_TOKEN" ] || [ -z "$COOLIFY_APP" ]; then
+            echo "::warning::COOLIFY_API/COOLIFY_TOKEN/COOLIFY_APP not configured. Skipping image tag update."
+            exit 0
+          fi
+
+          echo "Setting image tag to: $IMAGE_TAG"
+
+          payload=$(cat <<JSON
+          {
+            "data": [
+              { "key": "FRONTEND_IMAGE_TAG", "value": "${IMAGE_TAG}" },
+              { "key": "BACKEND_IMAGE_TAG", "value": "${IMAGE_TAG}" }
+            ]
+          }
+          JSON
+          )
+
+          curl -sS -X PATCH \
+            -H "Authorization: Bearer $COOLIFY_TOKEN" \
+            -H "Content-Type: application/json" \
+            "$COOLIFY_API/applications/$COOLIFY_APP/envs/bulk" \
+            -d "$payload" \
+            || echo "::warning::Coolify image tag update failed"
+
+      - name: Trigger Coolify deploy
+        continue-on-error: true
+        env:
+          COOLIFY_API: ${{ secrets.COOLIFY_API }}
+          COOLIFY_APP: ${{ secrets.COOLIFY_APP }}
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+          FORCE_DEPLOY: ${{ inputs.force || 'true' }}
+        run: |
+          if [ -z "$COOLIFY_API" ] || [ -z "$COOLIFY_TOKEN" ] || [ -z "$COOLIFY_APP" ]; then
+            echo "::warning::COOLIFY_API/COOLIFY_TOKEN/COOLIFY_APP not configured. Skipping deploy trigger."
+            exit 0
+          fi
+
+          echo "Triggering Coolify deploy... ($COOLIFY_API/deploy?uuid=$COOLIFY_APP&force=$FORCE_DEPLOY)"
+          curl -sS -X POST \
+            "$COOLIFY_API/deploy?uuid=$COOLIFY_APP&force=$FORCE_DEPLOY" \
+            -H "Authorization: Bearer $COOLIFY_TOKEN" \
+          || echo "::warning::Coolify deploy trigger failed"
