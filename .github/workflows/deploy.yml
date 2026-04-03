@@ -8,17 +8,6 @@ on:
     types: [completed]
     branches: [main]
   workflow_dispatch:
-    inputs:
-      image_tag:
-        description: "Image tag (commit SHA). Leave empty for 'latest'."
-        required: false
-        default: ''
-        type: string
-      force:
-        description: "Force deploy"
-        required: false
-        default: true
-        type: boolean
 
 permissions:
   contents: read
@@ -32,9 +21,7 @@ jobs:
       - name: Determine image tag
         id: tag
         run: |
-          if [ -n "${{ inputs.image_tag }}" ]; then
-            echo "tag=${{ inputs.image_tag }}" >> "$GITHUB_OUTPUT"
-          elif [ -n "${{ github.event.workflow_run.head_sha }}" ]; then
+          if [ -n "${{ github.event.workflow_run.head_sha }}" ]; then
             echo "tag=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
           else
             echo "tag=latest" >> "$GITHUB_OUTPUT"
@@ -78,15 +65,14 @@ jobs:
           COOLIFY_API: ${{ secrets.COOLIFY_API }}
           COOLIFY_APP: ${{ secrets.COOLIFY_APP }}
           COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
-          FORCE_DEPLOY: ${{ inputs.force || 'true' }}
         run: |
           if [ -z "$COOLIFY_API" ] || [ -z "$COOLIFY_TOKEN" ] || [ -z "$COOLIFY_APP" ]; then
             echo "::warning::COOLIFY_API/COOLIFY_TOKEN/COOLIFY_APP not configured. Skipping deploy trigger."
             exit 0
           fi
 
-          echo "Triggering Coolify deploy... ($COOLIFY_API/deploy?uuid=$COOLIFY_APP&force=$FORCE_DEPLOY)"
+          echo "Triggering Coolify deploy (tag: ${{ steps.tag.outputs.tag }})..."
           curl -sS -X POST \
-            "$COOLIFY_API/deploy?uuid=$COOLIFY_APP&force=$FORCE_DEPLOY" \
+            "$COOLIFY_API/deploy?uuid=$COOLIFY_APP&force=true" \
             -H "Authorization: Bearer $COOLIFY_TOKEN" \
           || echo "::warning::Coolify deploy trigger failed"

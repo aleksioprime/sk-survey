@@ -62,6 +62,19 @@ function onSaveText(questionId) {
   store.saveAnswer(props.token, questionId, payload)
 }
 
+// Сохранение при потере фокуса для текстовых и числовых полей
+function onBlurSave(questionId) {
+  const question = store.questions.find((q) => q.id === questionId)
+  if (!question) return
+  if (!['text', 'rich_text', 'number'].includes(question.question_type)) return
+  const value = store.answers[questionId]
+  if (value == null || value === '') return
+  // Отменяем ожидающий debounce (для number) и сохраняем немедленно
+  clearTimeout(saveTimeouts.value[questionId])
+  const payload = buildPayload(question, value)
+  store.saveAnswer(props.token, questionId, payload)
+}
+
 function debounceSave(questionId, value) {
   clearTimeout(saveTimeouts.value[questionId])
   saveTimeouts.value[questionId] = setTimeout(() => {
@@ -228,6 +241,7 @@ async function handleSubmit() {
           :saved-value="store.getSavedValue(question.id)"
           @update:model-value="onAnswer(question.id, $event)"
           @save-text="onSaveText(question.id)"
+          @blur="onBlurSave(question.id)"
         />
       </div>
 

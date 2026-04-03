@@ -10,7 +10,7 @@ const props = defineProps({
   modelValue: { default: null },
 })
 
-const emit = defineEmits(['update:modelValue'])
+const emit = defineEmits(['update:modelValue', 'blur'])
 const textareaRef = ref(null)
 
 function resize() {
@@ -48,5 +48,6 @@ function onPaste(e) {
     rows="6"
     @input="onInput"
     @paste="onPaste"
+    @blur="emit('blur')"
   />
 </template>

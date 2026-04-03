@@ -8,7 +8,7 @@ const props = defineProps({
   modelValue: { default: null },
 })
 
-const emit = defineEmits(['update:modelValue'])
+const emit = defineEmits(['update:modelValue', 'blur'])
 
 function onInput(e) {
   const val = e.target.value
@@ -31,6 +31,7 @@ function onInput(e) {
       :max="question.max_number"
       placeholder="Введите число..."
       @input="onInput"
+      @blur="emit('blur')"
     />
   </div>
 </template>

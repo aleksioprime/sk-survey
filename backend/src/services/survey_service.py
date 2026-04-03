@@ -7,7 +7,6 @@
 """
 
 import logging
-import re
 import secrets
 from datetime import datetime, timezone
 
@@ -17,25 +16,6 @@ from src.core.nocobase import nocobase
 from src.schemas import AnswerPayload
 
 logger = logging.getLogger('sk_survey')
-
-# Невидимые Unicode-символы, которые часто попадают при копировании с сайтов:
-# zero-width space, BOM, soft hyphen и другие управляющие символы
-_INVISIBLE_CHARS_RE = re.compile(
-    r'[\u00ad\u200b\u200c\u200d\u200e\u200f\u2028\u2029\ufeff\u00a0]'
-)
-
-
-def _sanitize_text(value: str | None) -> str | None:
-    """Убрать невидимые Unicode-символы и нормализовать переносы строк."""
-    if value is None:
-        return None
-    # Нормализуем \r\n → \n
-    value = value.replace('\r\n', '\n').replace('\r', '\n')
-    # Заменяем неразрывные пробелы на обычные
-    value = value.replace('\u00a0', ' ')
-    # Убираем нулевые/невидимые символы
-    value = _INVISIBLE_CHARS_RE.sub('', value)
-    return value
 
 
 class SurveyService:
@@ -64,7 +44,6 @@ class SurveyService:
             'survey_sections',
             filter={'survey_id': survey_id, 'is_active': True},
             sort='order',
-            pageSize=1000,
         )
 
         questions = await nocobase.list(
@@ -72,7 +51,6 @@ class SurveyService:
             filter={'survey_id': survey_id, 'is_active': True},
             sort='order',
             appends='scale',
-            pageSize=1000,
         )
 
         question_ids = [q['id'] for q in questions]
@@ -83,7 +61,6 @@ class SurveyService:
                 'survey_question_options',
                 filter={'question_id.$in': question_ids, 'is_active': True},
                 sort='order',
-                pageSize=1000,
             )
 
         scale_ids = list({q['scale_id'] for q in questions if q.get('scale_id')})
@@ -94,13 +71,11 @@ class SurveyService:
                 'survey_scale_items',
                 filter={'scale_id.$in': scale_ids},
                 sort='order',
-                pageSize=1000,
             )
             scale_ranges = await nocobase.list(
                 'survey_question_scale_ranges',
                 filter={'question_id.$in': question_ids},
                 sort='order',
-                pageSize=1000,
             )
 
         # Попытка восстановить существующую сессию
@@ -116,7 +91,6 @@ class SurveyService:
                     'survey_answers',
                     filter={'response_id': existing_response['id']},
                     appends='options',
-                    pageSize=1000,
                 )
 
         return {
@@ -163,12 +137,6 @@ class SurveyService:
 
         answer_data = payload.model_dump(exclude_none=True)
         option_ids = answer_data.pop('option_ids', None)
-
-        # Очищаем текстовые поля от невидимых символов, которые часто
-        # встречаются в тексте, скопированном с веб-сайтов
-        for field in ('text_value', 'rich_text_value'):
-            if field in answer_data:
-                answer_data[field] = _sanitize_text(answer_data[field])
 
         if existing:
             result = await nocobase.update('survey_answers', existing['id'], answer_data)

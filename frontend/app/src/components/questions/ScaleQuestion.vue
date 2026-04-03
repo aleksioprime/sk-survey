@@ -82,8 +82,16 @@ function isSelected(item) {
       </button>
     </div>
 
-    <p v-if="activeRange" class="mt-2 text-xs text-primary font-medium">
-      {{ activeRange.title }}
-    </p>
+    <!-- Легенда диапазонов шкалы -->
+    <div v-if="scaleRanges.length" class="mt-3 flex flex-wrap gap-x-4 gap-y-1">
+      <span
+        v-for="range in scaleRanges"
+        :key="range.id"
+        class="text-xs transition-colors duration-200"
+        :class="activeRange?.id === range.id ? 'text-primary font-semibold' : 'text-muted'"
+      >
+        {{ range.from_value }}–{{ range.to_value }}: {{ range.title }}
+      </span>
+    </div>
   </div>
 </template>

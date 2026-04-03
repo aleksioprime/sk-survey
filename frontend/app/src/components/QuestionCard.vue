@@ -25,7 +25,7 @@ const props = defineProps({
   savedValue: { default: null },
 })
 
-const emit = defineEmits(['update:modelValue', 'save-text'])
+const emit = defineEmits(['update:modelValue', 'save-text', 'blur'])
 
 const componentMap = {
   text: TextQuestion,
@@ -96,6 +96,7 @@ const canSave = computed(() =>
       :scale-ranges="scaleRanges"
       :model-value="modelValue"
       @update:model-value="emit('update:modelValue', $event)"
+      @blur="emit('blur')"
     />
 
     <div v-if="isTextType" class="mt-3 flex justify-end">
