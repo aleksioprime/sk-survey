@@ -23,6 +23,7 @@ export const useSurveyStore = defineStore('survey', () => {
   const error = ref(null)
   const currentSectionIndex = ref(0)
   const submitting = ref(false)
+  const pendingSaves = new Set()
 
   const survey = computed(() => bundle.value?.survey || null)
   const publishing = computed(() => bundle.value?.publishing || null)
@@ -213,6 +214,9 @@ export const useSurveyStore = defineStore('survey', () => {
 
   async function saveAnswer(token, questionId, payload) {
     if (!responseData.value) return
+    // Защита от дублей: если запрос для этого вопроса уже в полёте — пропускаем
+    if (pendingSaves.has(questionId)) return
+    pendingSaves.add(questionId)
     const responseId = responseData.value.id
     try {
       await publicApi.patch(
@@ -222,6 +226,8 @@ export const useSurveyStore = defineStore('survey', () => {
       savedAnswers.value = { ...savedAnswers.value, [questionId]: answers.value[questionId] }
     } catch (e) {
       console.error('[saveAnswer] error:', e)
+    } finally {
+      pendingSaves.delete(questionId)
     }
   }
 
@@ -276,6 +282,7 @@ export const useSurveyStore = defineStore('survey', () => {
     error.value = null
     currentSectionIndex.value = 0
     submitting.value = false
+    pendingSaves.clear()
   }
 
   return {
