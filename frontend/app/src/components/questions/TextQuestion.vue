@@ -48,7 +48,7 @@ function onPaste(e) {
     ref="textareaRef"
     class="field-input w-full resize-none overflow-hidden"
     :value="modelValue || ''"
-    :placeholder="question.description || 'Введите ответ...'"
+    :placeholder="'Введите ответ...'"
     rows="4"
     @input="onInput"
     @paste="onPaste"

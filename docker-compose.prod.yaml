@@ -6,8 +6,6 @@ services:
     image: ghcr.io/aleksioprime/sk-survey-backend:${BACKEND_IMAGE_TAG:-latest}
     <<: *app
     container_name: sk-survey-backend
-    env_file:
-      - ./.env
     networks:
       - apps_net
 

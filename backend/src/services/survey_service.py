@@ -65,17 +65,21 @@ class SurveyService:
 
         scale_ids = list({q['scale_id'] for q in questions if q.get('scale_id')})
         scale_items = []
-        scale_ranges = []
         if scale_ids:
             scale_items = await nocobase.list(
                 'survey_scale_items',
                 filter={'scale_id.$in': scale_ids},
                 sort='order',
+                pageSize=1000,
             )
+
+        scale_ranges = []
+        if question_ids:
             scale_ranges = await nocobase.list(
                 'survey_question_scale_ranges',
                 filter={'question_id.$in': question_ids},
                 sort='order',
+                pageSize=1000,
             )
 
         # Попытка восстановить существующую сессию
