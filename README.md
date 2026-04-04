@@ -78,7 +78,7 @@ FRONTEND_PORT=3000
 ### 3. Запустить
 
 ```bash
-docker compose up -d --build
+docker compose -p sk-survey up -d --build
 ```
 
 Приложение будет доступно по адресу `http://localhost:3000`.
