@@ -169,12 +169,7 @@ async function handleSubmit() {
       class="flex min-h-screen items-center justify-center px-4"
     >
       <div class="glass-panel max-w-lg w-full p-8 text-center">
-        <div class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10">
-          <svg class="h-7 w-7 text-primary" viewBox="0 0 32 32" fill="none">
-            <rect width="32" height="32" rx="8" fill="currentColor"/>
-            <path d="M8 16l4 4 12-12" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </div>
+        <div class="mx-auto mb-4 text-5xl">📋</div>
         <h1 class="text-2xl font-bold text-slate-800">{{ store.survey.title }}</h1>
         <p
           v-if="store.survey.description"

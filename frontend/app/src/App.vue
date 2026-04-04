@@ -7,7 +7,7 @@
       <router-view />
     </main>
     <footer class="py-4 text-center text-xs text-muted">
-      © {{ new Date().getFullYear() }} Гимназия Сколково
+      Сервисы автоматизации Гимназии Сколково · © {{ new Date().getFullYear() }}  Алексей Семочкин
     </footer>
   </div>
 </template>
