@@ -22,6 +22,15 @@ const store = useSurveyStore()
 const started = ref(false)
 const saveTimeouts = ref({})
 
+function pluralizeRu(count, one, few, many) {
+  const n = Math.abs(Number(count)) % 100
+  const n1 = n % 10
+  if (n > 10 && n < 20) return many
+  if (n1 > 1 && n1 < 5) return few
+  if (n1 === 1) return one
+  return many
+}
+
 onMounted(async () => {
   store.$reset()
   try {
@@ -216,8 +225,14 @@ async function handleSubmit() {
           {{ store.survey.intro_text }}
         </p>
         <div class="mt-4 text-xs text-muted">
-          <span v-if="store.questions.length">{{ store.questions.length }} вопросов</span>
-          <span v-if="store.hasSections"> · {{ store.totalSections }} разделов</span>
+          <span v-if="store.questions.length">
+            {{ store.questions.length }}
+            {{ pluralizeRu(store.questions.length, 'вопрос', 'вопроса', 'вопросов') }}
+          </span>
+          <span v-if="store.hasSections">
+            · {{ store.totalSections }}
+            {{ pluralizeRu(store.totalSections, 'раздел', 'раздела', 'разделов') }}
+          </span>
         </div>
         <button class="btn-primary mt-6" @click="handleStart">
           Начать опрос
