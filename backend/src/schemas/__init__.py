@@ -16,6 +16,7 @@ class AnswerPayload(BaseModel):
     - scale_item_id — для шкал с элементами
     - option_id — для одиночного выбора
     - option_ids — для множественного выбора (ManyToMany)
+    - ranking_option_ids — для ранжирования (порядок option_id)
     """
 
     text_value: str | None = None
@@ -25,4 +26,5 @@ class AnswerPayload(BaseModel):
     scale_item_id: int | None = None
     option_id: int | None = None
     option_ids: list[int] | None = Field(default=None, description='Для множественного выбора')
+    ranking_option_ids: list[int] | None = Field(default=None, description='Для ranking-вопросов')
     is_skipped: bool = False

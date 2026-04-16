@@ -129,5 +129,13 @@ class NocoBaseClient:
             json_payload=data,
         )
 
+    async def delete(self, collection: str, record_id: int | str) -> dict:
+        """Удалить запись по ID."""
+        return await self._request(
+            'POST',
+            f'/{collection}:destroy',
+            params={'filterByTk': record_id},
+        )
+
 
 nocobase = NocoBaseClient()

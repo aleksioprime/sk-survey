@@ -51,6 +51,7 @@
 - number — Число
 - yes_no — Да/Нет
 - scale — Шкала
+- ranking - Расставить по порядку
 Порядок (order)
 Обязательный (is_required)
 Активный (is_active)
@@ -59,6 +60,7 @@
 Максимум выборов (max_selections)
 Минимальное число (min_number)
 Максимальное число (max_number)
+Случайный порядок вариантов (is_options_shuffled)
 
 **Варианты ответов (survey_question_options):**
 Вопрос (question_id)
@@ -89,6 +91,11 @@
 Выбранный вариант (option_id)
 Пропущен (is_skipped)
 Выбранные варианты (options - ManyToMany)
+
+**Ответы выбора порядка (survey_answer_ranking_items)**
+Ответ (answer_id)
+Вариант (option_id)
+Позиция (rank)
 
 **Диапазоны шкалы вопроса (survey_question_scale_ranges):**
 Вопрос (question_id)

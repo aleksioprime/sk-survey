@@ -47,29 +47,58 @@ function onAnswer(questionId, value) {
   store.setAnswer(questionId, value)
   const question = store.questions.find((q) => q.id === questionId)
   if (!question) return
-  // Текстовые вопросы сохраняются по кнопке, остальные — автоматически
-  if (question.question_type !== 'text' && question.question_type !== 'rich_text') {
+  // Вопросы с кнопкой (text/rich_text/ranking) сохраняются вручную.
+  if (!['text', 'rich_text', 'ranking'].includes(question.question_type)) {
     debounceSave(questionId, value)
   }
 }
 
-function onSaveText(questionId) {
+function onSaveAnswer(questionId) {
   const value = store.answers[questionId]
-  if (value == null || value === '') return
   const question = store.questions.find((q) => q.id === questionId)
   if (!question) return
+
+  if (question.question_type === 'ranking') {
+    const totalOptions = store.getOptionsForQuestion(question).length
+    if (!Array.isArray(value) || totalOptions === 0 || value.length !== totalOptions) return
+  } else if (value == null || value === '') {
+    return
+  }
+
   const payload = buildPayload(question, value)
   store.saveAnswer(props.token, questionId, payload)
 }
 
-// Сохранение при потере фокуса для текстовых и числовых полей
+function onCancelChanges(questionId) {
+  const question = store.questions.find((q) => q.id === questionId)
+  if (!question) return
+
+  const hasSaved = store.isAnswerSaved(questionId)
+  if (hasSaved) {
+    const savedValue = store.getSavedValue(questionId)
+    if (Array.isArray(savedValue)) {
+      store.setAnswer(questionId, [...savedValue])
+    } else {
+      store.setAnswer(questionId, savedValue)
+    }
+    return
+  }
+
+  if (question.question_type === 'ranking') {
+    store.setAnswer(questionId, [])
+  } else {
+    store.setAnswer(questionId, '')
+  }
+}
+
+// Сохранение при потере фокуса для числовых полей
 function onBlurSave(questionId) {
   const question = store.questions.find((q) => q.id === questionId)
   if (!question) return
-  if (!['text', 'rich_text', 'number'].includes(question.question_type)) return
+  if (!['number'].includes(question.question_type)) return
   const value = store.answers[questionId]
   if (value == null || value === '') return
-  // Отменяем ожидающий debounce (для number) и сохраняем немедленно
+  // Отменяем ожидающий debounce и сохраняем немедленно
   clearTimeout(saveTimeouts.value[questionId])
   const payload = buildPayload(question, value)
   store.saveAnswer(props.token, questionId, payload)
@@ -114,6 +143,9 @@ function buildPayload(question, value) {
       } else {
         payload.scale_item_id = value
       }
+      break
+    case 'ranking':
+      payload.ranking_option_ids = value
       break
   }
 
@@ -229,13 +261,15 @@ async function handleSubmit() {
           :key="question.id"
           :question="question"
           :question-index="idx"
-          :options="store.getOptionsForQuestion(question.id)"
-          :scale-items="store.getScaleItemsForScale(question.scale_id)"
+          :options="store.getOptionsForQuestion(question)"
+          :scale-items="store.getScaleItemsForQuestion(question)"
           :scale-ranges="store.getScaleRangesForQuestion(question.id)"
           :model-value="store.answers[question.id]"
           :saved-value="store.getSavedValue(question.id)"
+          :is-saving="store.isAnswerSaving(question.id)"
           @update:model-value="onAnswer(question.id, $event)"
-          @save-text="onSaveText(question.id)"
+          @save-answer="onSaveAnswer(question.id)"
+          @cancel-changes="onCancelChanges(question.id)"
           @blur="onBlurSave(question.id)"
         />
       </div>

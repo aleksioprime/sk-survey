@@ -14,6 +14,7 @@ import MultipleChoiceQuestion from '@/components/questions/MultipleChoiceQuestio
 import NumberQuestion from '@/components/questions/NumberQuestion.vue'
 import YesNoQuestion from '@/components/questions/YesNoQuestion.vue'
 import ScaleQuestion from '@/components/questions/ScaleQuestion.vue'
+import RankingQuestion from '@/components/questions/RankingQuestion.vue'
 
 const props = defineProps({
   question: { type: Object, required: true },
@@ -23,9 +24,10 @@ const props = defineProps({
   scaleRanges: { type: Array, default: () => [] },
   modelValue: { default: null },
   savedValue: { default: null },
+  isSaving: { type: Boolean, default: false },
 })
 
-const emit = defineEmits(['update:modelValue', 'save-text', 'blur'])
+const emit = defineEmits(['update:modelValue', 'save-answer', 'cancel-changes', 'blur'])
 
 const componentMap = {
   text: TextQuestion,
@@ -35,22 +37,55 @@ const componentMap = {
   number: NumberQuestion,
   yes_no: YesNoQuestion,
   scale: ScaleQuestion,
+  ranking: RankingQuestion,
 }
 
 const questionComponent = computed(() => componentMap[props.question.question_type] || TextQuestion)
 
-const isTextType = computed(() =>
-  props.question.question_type === 'text' || props.question.question_type === 'rich_text',
+const isManualSaveType = computed(() =>
+  ['text', 'rich_text', 'ranking'].includes(props.question.question_type),
 )
 
-// Вопрос считается сохранённым, если в store есть подтверждённое значение
-const isSaved = computed(() => props.savedValue !== null)
+function areValuesEqual(a, b) {
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false
+    return a.every((item, idx) => item === b[idx])
+  }
+  return a === b
+}
 
-// Кнопка активна, если есть текст И он отличается от последнего сохранённого на сервере
+const hasAnyInput = computed(() => {
+  if (props.question.question_type === 'ranking') {
+    return Array.isArray(props.modelValue) && props.modelValue.length > 0
+  }
+  return props.modelValue != null && props.modelValue !== ''
+})
+
+const hasValue = computed(() => {
+  if (props.question.question_type === 'ranking') {
+    return Array.isArray(props.modelValue) &&
+      props.options.length > 0 &&
+      props.modelValue.length === props.options.length
+  }
+  return props.modelValue != null && props.modelValue !== ''
+})
+
+const isDirty = computed(() => {
+  if (!isManualSaveType.value) return false
+  const hasSaved = props.savedValue !== null && props.savedValue !== undefined
+  if (!hasSaved) return hasAnyInput.value
+  return !areValuesEqual(props.modelValue, props.savedValue)
+})
+
+const isSaved = computed(() => {
+  const hasSaved = props.savedValue !== null && props.savedValue !== undefined
+  return hasSaved && !isDirty.value
+})
+
 const canSave = computed(() =>
-  props.modelValue != null &&
-  props.modelValue !== '' &&
-  props.modelValue !== props.savedValue,
+  isManualSaveType.value &&
+  hasValue.value &&
+  isDirty.value,
 )
 </script>
 
@@ -77,7 +112,23 @@ const canSave = computed(() =>
           </p>
         </div>
         <span
-          v-if="isSaved"
+          v-if="isSaving"
+          class="shrink-0 flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 animate-pulse"
+        >
+          <svg class="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2" class="opacity-30" />
+            <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+          </svg>
+          Сохраняется...
+        </span>
+        <span
+          v-else-if="isDirty"
+          class="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700"
+        >
+          Изменено
+        </span>
+        <span
+          v-else-if="isSaved"
           class="shrink-0 flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
         >
           <svg class="h-3 w-3" viewBox="0 0 12 12" fill="none">
@@ -99,13 +150,21 @@ const canSave = computed(() =>
       @blur="emit('blur')"
     />
 
-    <div v-if="isTextType" class="mt-3 flex justify-end">
+    <div v-if="isManualSaveType" class="mt-3 flex justify-end gap-2">
+      <button
+        v-if="isDirty"
+        class="btn-outline text-xs px-4 py-2"
+        :disabled="isSaving"
+        @click="emit('cancel-changes')"
+      >
+        Отменить изменения
+      </button>
       <button
         class="btn-primary text-xs px-4 py-2"
-        :disabled="!canSave"
-        @click="emit('save-text')"
+        :disabled="!canSave || isSaving"
+        @click="emit('save-answer')"
       >
-        Сохранить ответ
+        {{ isSaving ? 'Сохранение...' : 'Сохранить ответ' }}
       </button>
     </div>
   </div>
