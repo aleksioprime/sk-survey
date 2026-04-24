@@ -12,6 +12,7 @@
 Публичный токен (public_token)
 Активна (is_active)
 Анонимный опрос (is_anonymous)
+Наблюдатели (observers)
 
 **Разделы опросов (survey_sections):**
 Опрос (survey_id)

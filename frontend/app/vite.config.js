@@ -1,9 +1,9 @@
 /**
  * Конфигурация Vite.
  *
- * В dev-режиме проксирует /backend → BFF-бэкенд (FastAPI).
- * URL прокси задаётся через VITE_BACKEND_API_PROXY_URL
- * (в Docker: http://backend:8000/api/v1, локально: http://localhost:8000/api/v1).
+ * Прокси:
+ * /api     → NocoBase (для личного кабинета Survey)
+ * /backend → BFF FastAPI (для публичного прохождения опроса)
  */
 
 import { defineConfig } from 'vite'
@@ -11,6 +11,7 @@ import vue from '@vitejs/plugin-vue'
 import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig(() => {
+  const apiUrl = process.env.VITE_API_URL || 'https://flow.skeducator.ru'
   const backendProxyUrl = process.env.VITE_BACKEND_API_PROXY_URL || 'http://localhost:8000/api/v1'
 
   return {
@@ -20,6 +21,11 @@ export default defineConfig(() => {
     },
     server: {
       proxy: {
+        '/api': {
+          target: apiUrl,
+          changeOrigin: true,
+          secure: true,
+        },
         '/backend': {
           target: backendProxyUrl,
           changeOrigin: true,
