@@ -36,6 +36,16 @@ jobs:
         run: npm install
         working-directory: frontend/app
 
+      - name: Ensure rolldown linux binding
+        run: |
+          if node -e "require.resolve('rolldown/package.json')" >/dev/null 2>&1; then
+            if [ ! -d "node_modules/@rolldown/binding-linux-x64-gnu" ]; then
+              ROLLDOWN_VERSION=$(node -p "require('./node_modules/rolldown/package.json').version")
+              npm install --no-save "@rolldown/binding-linux-x64-gnu@${ROLLDOWN_VERSION}"
+            fi
+          fi
+        working-directory: frontend/app
+
       - name: Build frontend
         run: npm run build
         working-directory: frontend/app

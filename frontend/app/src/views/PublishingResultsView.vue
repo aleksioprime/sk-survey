@@ -1160,7 +1160,7 @@ async function loadResults() {
     const publishingRes = await nocobaseApi.get('/survey_publishings:get', {
       params: {
         filterByTk: props.publishingId,
-        appends: 'survey,observers',
+        appends: 'survey,observers,observers.user',
       },
     })
 
@@ -1171,6 +1171,7 @@ async function loadResults() {
 
     if (!canUserViewPublishing(currentPublishing, {
       currentUserId: auth.user?.id,
+      currentPerson: auth.currentPerson,
       isAdmin: auth.isAdmin,
     })) {
       throw new Error('PUBLISHING_FORBIDDEN')

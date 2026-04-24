@@ -31,6 +31,7 @@ function formatDate(value) {
 function canViewPublishing(publishing) {
   return canUserViewPublishing(publishing, {
     currentUserId: auth.user?.id,
+    currentPerson: auth.currentPerson,
     isAdmin: auth.isAdmin,
   })
 }
@@ -101,7 +102,7 @@ async function loadPublishings() {
   try {
     const { data } = await nocobaseApi.get('/survey_publishings:list', {
       params: {
-        appends: 'survey,observers',
+        appends: 'survey,observers,observers.user',
         pageSize: 1000,
       },
     })
@@ -192,9 +193,19 @@ onMounted(() => {
 <template>
   <div class="mx-auto w-full max-w-6xl px-4 py-6">
     <div class="mb-6">
-      <div>
-        <h1 class="text-2xl font-bold text-slate-800">Личный кабинет Survey</h1>
+      <div class="flex flex-wrap items-end justify-between gap-3">
+        <div>
+        <h1 class="text-2xl font-bold text-slate-800">Личный кабинет</h1>
         <p class="mt-1 text-sm text-muted">Просмотр результатов по публикациям опросов</p>
+        </div>
+        <button
+          type="button"
+          class="btn-outline !px-4 !py-2"
+          :disabled="loading"
+          @click="loadPublishings"
+        >
+          {{ loading ? 'Обновление...' : 'Обновить' }}
+        </button>
       </div>
     </div>
 

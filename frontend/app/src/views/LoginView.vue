@@ -39,7 +39,7 @@ async function handleLogin() {
   <div class="flex min-h-[80vh] items-center justify-center px-4 py-10">
     <form class="glass-panel w-full max-w-md p-8" @submit.prevent="handleLogin">
       <h1 class="text-center text-2xl font-bold text-slate-800">Личный кабинет опросов</h1>
-      <p class="mt-2 text-center text-sm text-muted">Вход для сотрудников с ролью Survey</p>
+      <p class="mt-2 text-center text-sm text-muted">Вход для сотрудников с доступом к результатам</p>
 
       <label class="mt-6 block text-sm font-medium text-slate-700" for="account">Логин или email</label>
       <input

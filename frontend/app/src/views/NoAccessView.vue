@@ -6,7 +6,7 @@
         У вашей учетной записи нет роли для просмотра результатов опросов.
       </p>
       <p class="mt-1 text-sm text-muted">
-        Обратитесь к администратору, чтобы выдать роль <span class="font-semibold text-slate-700">Survey</span>.
+        Обратитесь к администратору, чтобы выдать доступ к результатам.
       </p>
       <router-link to="/login" class="btn-outline mt-6 inline-flex">Вернуться ко входу</router-link>
     </div>

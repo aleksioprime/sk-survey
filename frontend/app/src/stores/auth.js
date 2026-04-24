@@ -30,6 +30,7 @@ function roleMatchesMarker(role, marker) {
 export const useAuthStore = defineStore('auth', () => {
   const token = ref(localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || '')
   const user = ref(null)
+  const person = ref(null)
 
   const isAuthenticated = computed(() => token.value !== '')
 
@@ -51,9 +52,19 @@ export const useAuthStore = defineStore('auth', () => {
 
   const roleName = computed(() => {
     const result = []
-    if (isSurvey.value) result.push('Survey')
+    if (isSurvey.value) result.push('Доступ к результатам')
     if (isAdmin.value) result.push('Admin')
     return result.join(' / ') || null
+  })
+
+  const currentPerson = computed(() => {
+    if (person.value) return person.value
+
+    const userPerson = user.value?.person
+    if (Array.isArray(userPerson)) {
+      return userPerson[0] || null
+    }
+    return userPerson || (user.value?.person_id ? { id: user.value.person_id } : null)
   })
 
   async function login(account, password) {
@@ -74,6 +85,24 @@ export const useAuthStore = defineStore('auth', () => {
   async function fetchUser() {
     const { data } = await nocobaseApi.get('/auth:check')
     user.value = data?.data || null
+
+    if (!currentPerson.value && user.value?.id) {
+      try {
+        const personRes = await nocobaseApi.get('/persons:list', {
+          params: {
+            filter: JSON.stringify({ user_id: Number(user.value.id) }),
+            pageSize: 1,
+          },
+        })
+
+        person.value = personRes?.data?.data?.[0] || null
+      } catch {
+        // person relation is optional, ignore if collection is unavailable or forbidden
+      }
+    } else {
+      person.value = currentPerson.value
+    }
+
     return user.value
   }
 
@@ -86,12 +115,15 @@ export const useAuthStore = defineStore('auth', () => {
 
     token.value = ''
     user.value = null
+    person.value = null
     localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY)
   }
 
   return {
     token,
     user,
+    person,
+    currentPerson,
     roles,
     isAuthenticated,
     isAdmin,
