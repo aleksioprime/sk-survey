@@ -61,6 +61,7 @@ class SurveyService:
                 'survey_question_options',
                 filter={'question_id.$in': question_ids, 'is_active': True},
                 sort='order',
+                pageSize=1000,
             )
 
         scale_ids = list({q['scale_id'] for q in questions if q.get('scale_id')})
