@@ -1,35 +1,77 @@
-x-app: &app
+# Окружение разработки: docker compose -p sk-survey up -d --build
+# Приложение: http://localhost:8601 · API: http://localhost:8600/api/docs · Почта: http://localhost:8604
+# PostgreSQL: localhost:8610 · Redis: localhost:8611
+
+x-backend: &backend
+  build:
+    context: ./backend
+    target: dev
   env_file:
-    - .env
-  restart: unless-stopped
+    - path: .env
+      required: false
+  environment:
+    DB__HOST: postgres
+    DB__PORT: 5432
+    REDIS__HOST: redis
+    REDIS__PORT: 6379
+    SMTP__HOST: mailpit
+    SMTP__PORT: 1025
+    CORS_ORIGINS: '["http://localhost:8601"]'
+    APP_URL: http://localhost:8601
+    RELOAD: '1'
+    BOOTSTRAP_ADMIN_EMAILS: '["admin@example.org"]'
+    BOOTSTRAP_ADMIN_PASSWORD: dev-admin-pass  # только для локальной разработки
+  volumes:
+    - ./backend:/usr/src/app
+    - nocobase_data:/data/nocobase
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_started
 
 services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: sk_survey
+      POSTGRES_PASSWORD: sk_survey
+      POSTGRES_DB: sk_survey
+    ports: ['8610:5432']
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U sk_survey']
+      interval: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports: ['8611:6379']
+
+  mailpit:
+    image: axllent/mailpit:v1.24
+    ports: ['8604:8025', '8603:1025']
+
   backend:
-    build:
-      context: ./backend
-    <<: *app
-    volumes:
-      - ./backend/src:/usr/src/app/src
-    ports:
-      - "${BACKEND_PORT:-8000}:8000"
+    <<: *backend
+    command: api
+    ports: ['8600:8000']
+
+  worker:
+    <<: *backend
+    command: worker
 
   frontend:
     build:
       context: ./frontend
       target: dev
-      args:
-        - VITE_LOGGING=${VITE_LOGGING}
-        - VITE_API_URL=${VITE_API_URL}
-        - VITE_SURVEY_ROLE=${VITE_SURVEY_ROLE}
-        - VITE_BACKEND_API_URL=${VITE_BACKEND_API_URL}
-    <<: *app
     environment:
-      VITE_API_URL: ${VITE_API_URL}
-      VITE_SURVEY_ROLE: ${VITE_SURVEY_ROLE}
-      VITE_BACKEND_API_PROXY_URL: http://backend:8000/api/v1
-    depends_on:
-      - backend
+      VITE_API_PROXY: http://backend:8000
     volumes:
-      - ./frontend/app/src:/usr/src/app/src
-    ports:
-      - "${FRONTEND_PORT:-3000}:5173"
+      - ./frontend/src:/app/src
+    ports: ['8601:5173']
+    depends_on: [backend]
+
+volumes:
+  postgres_data:
+  nocobase_data:
