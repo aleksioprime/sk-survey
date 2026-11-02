@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+import nh3
 from sk_common.people.models import PERSON_SOURCE_LOCAL, Person
 from sk_common.people.service import ensure_user, normalize_email
 from sk_common.security import hash_secret
@@ -23,6 +24,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.responses.models import STATUS_IN_PROGRESS, STATUS_SUBMITTED, Answer, RankingItem, Response
+from app.modules.responses.service import RICH_TEXT_TAGS
 from app.modules.surveys.models import (
     QUESTION_TYPES,
     ROLE_OWNER,
@@ -357,7 +359,9 @@ class Loader:
                 response_id=int(row['response_id']),
                 question_id=int(row['question_id']),
                 text_value=row.get('text_value') or None,
-                rich_text_value=row.get('rich_text_value') or None,
+                rich_text_value=nh3.clean(row['rich_text_value'], tags=RICH_TEXT_TAGS)
+                if row.get('rich_text_value')
+                else None,
                 number_value=row.get('number_value'),
                 boolean_value=row.get('boolean_value'),
                 scale_item_id=_int(row.get('scale_item_id')),

@@ -205,10 +205,12 @@ async def _apply(db: AsyncSession, question: Question, answer: Answer, data: Ans
             raise AnswerError(f'Можно выбрать не больше {question.max_selections}')
         answer.selected_options = [options[i] for i in chosen]
     elif kind == 'ranking':
-        if data.ranking:
-            if sorted(data.ranking) != sorted(options):
-                raise AnswerError('Расставьте по порядку все варианты')
-            answer.ranking = [RankingItem(option_id=oid, rank=rank) for rank, oid in enumerate(data.ranking, 1)]
+        ranked = data.ranking
+        if len(set(ranked)) != len(ranked) or set(ranked) - set(options):
+            raise AnswerError('Такого варианта нет')
+        if question.max_selections and len(ranked) > question.max_selections:
+            raise AnswerError(f'Можно расставить не больше {question.max_selections}')
+        answer.ranking = [RankingItem(option_id=oid, rank=rank) for rank, oid in enumerate(ranked, 1)]
     elif kind == 'scale':
         await _apply_scale(db, question, answer, data)
 
@@ -273,9 +275,10 @@ async def submit(db: AsyncSession, response: Response) -> Publishing:
         answer = by_question.get(question.id)
         if question.is_required and not is_answered(answer):
             missing.append(question.id)
-        elif question.question_type == 'multiple_choice' and answer and not answer.is_skipped:
-            count = len(answer.selected_options)
-            if count and question.min_selections and count < question.min_selections:
+        elif question.min_selections and answer and not answer.is_skipped:
+            # Выбор или порядок начат, но вариантов меньше минимума
+            count = len(answer.selected_options) + len(answer.ranking)
+            if count and count < question.min_selections:
                 missing.append(question.id)
     if missing:
         raise HTTPException(

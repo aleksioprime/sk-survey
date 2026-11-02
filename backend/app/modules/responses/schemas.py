@@ -2,7 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.modules.surveys.schemas import ScaleOut, SectionOut
+from app.modules.surveys.schemas import RangeOut, ScaleOut, SectionOut
 
 
 class ORMModel(BaseModel):
@@ -29,6 +29,7 @@ class PublicQuestion(ORMModel):
     max_number: float | None
     is_options_shuffled: bool
     options: list[PublicOption]
+    ranges: list[RangeOut]
 
 
 class PublicSurvey(BaseModel):

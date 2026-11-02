@@ -64,7 +64,7 @@ async def test_response_token_is_required(db, client):
         ('number', {'number_value': 101}),
         ('scale', {'number_value': 11}),
         ('scale', {'number_value': 2.5}),
-        ('ranking', {'ranking': 'partial'}),
+        ('ranking', {'ranking': 'duplicate'}),
     ],
 )
 async def test_invalid_answers(db, client, kind, value):
@@ -74,8 +74,8 @@ async def test_invalid_answers(db, client, kind, value):
     option_ids = [o['id'] for o in question['options']]
     if value.get('option_ids') == 'all':
         value = {'option_ids': option_ids}  # больше max_selections=2
-    if value.get('ranking') == 'partial':
-        value = {'ranking': option_ids[:2]}
+    if value.get('ranking') == 'duplicate':
+        value = {'ranking': [option_ids[0], option_ids[0]]}
     headers = await _start(client, built['publishing']['public_token'])
     assert (await client.put(ANSWER.format(question['id']), json=value, headers=headers)).status_code == 400
 
