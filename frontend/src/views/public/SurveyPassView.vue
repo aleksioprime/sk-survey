@@ -268,9 +268,6 @@ async function submit() {
           >
             Войти через SkolStream
           </a>
-          <RouterLink :to="{ name: 'login', query: { next: route.fullPath } }" class="mt-3 block text-center text-sm text-brand-700">
-            Другие способы входа
-          </RouterLink>
         </section>
 
         <section v-else-if="stage === 'intro'" class="rounded-card border border-line bg-surface p-6">
