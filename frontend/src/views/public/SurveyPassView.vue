@@ -17,8 +17,11 @@ import {
   startResponse,
   submitResponse,
 } from '@/api/public'
+import BrandMark from '@/components/brand/BrandMark.vue'
+import SchoolFooter from '@/components/brand/SchoolFooter.vue'
 import QuestionField from '@/components/questions/QuestionField.vue'
 import UiButton from '@/components/ui/UiButton.vue'
+import { pageTitle } from '@/brand'
 import { paragraphs } from '@/utils/richText'
 import { seededShuffle } from '@/utils/shuffle'
 
@@ -114,7 +117,7 @@ onMounted(async () => {
     stage.value = 'error'
     return
   }
-  document.title = survey.value.title
+  document.title = pageTitle(survey.value.title)
   if (survey.value.requires_login) {
     stage.value = 'login'
     return
@@ -245,8 +248,9 @@ async function submit() {
 </script>
 
 <template>
-  <div class="min-h-dvh">
-    <div class="mx-auto max-w-2xl px-4 py-8 sm:py-12">
+  <div class="flex min-h-dvh flex-col">
+    <div class="mx-auto w-full max-w-2xl flex-1 px-4 py-8 sm:py-12">
+      <BrandMark class="mb-8" />
       <p v-if="stage === 'loading'" class="text-ink-muted" role="status">Загружаем опрос…</p>
 
       <div v-else-if="stage === 'error'" class="rounded-card border border-line bg-surface p-6">
@@ -268,9 +272,6 @@ async function submit() {
           >
             Войти через SkolStream
           </a>
-          <RouterLink :to="{ name: 'login', query: { next: route.fullPath } }" class="mt-3 block text-center text-sm text-brand-700">
-            Другие способы входа
-          </RouterLink>
         </section>
 
         <section v-else-if="stage === 'intro'" class="rounded-card border border-line bg-surface p-6">
@@ -365,5 +366,6 @@ async function submit() {
         </section>
       </template>
     </div>
+    <SchoolFooter />
   </div>
 </template>
