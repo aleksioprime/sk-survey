@@ -1,10 +1,8 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
-import { errorMessage } from '@/api/http'
+import { errorMessage, SkeletonTable, UiBadge } from 'sk-ui'
 import { cabinetPublishings } from '@/api/surveys'
-import SkeletonTable from '@/components/skeleton/SkeletonTable.vue'
-import UiBadge from '@/components/ui/UiBadge.vue'
 
 const publishings = ref([])
 const loading = ref(true)

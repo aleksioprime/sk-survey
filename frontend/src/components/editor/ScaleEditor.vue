@@ -1,9 +1,7 @@
 <script setup>
 import { ref } from 'vue'
-import { errorMessage } from '@/api/http'
+import { errorMessage, UiButton, UiInput } from 'sk-ui'
 import { createScale } from '@/api/surveys'
-import UiButton from '@/components/ui/UiButton.vue'
-import UiInput from '@/components/ui/UiInput.vue'
 
 const emit = defineEmits(['created', 'cancel'])
 

@@ -1,12 +1,8 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
-import { errorMessage } from '@/api/http'
+import { errorMessage, SkeletonTable, UiBadge, UiButton, UiInput } from 'sk-ui'
 import { createSurvey, listSurveys } from '@/api/surveys'
-import SkeletonTable from '@/components/skeleton/SkeletonTable.vue'
-import UiBadge from '@/components/ui/UiBadge.vue'
-import UiButton from '@/components/ui/UiButton.vue'
-import UiInput from '@/components/ui/UiInput.vue'
 
 const router = useRouter()
 const surveys = ref([])
