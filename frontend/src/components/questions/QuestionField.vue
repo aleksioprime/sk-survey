@@ -3,6 +3,7 @@
  * Поле ответа на вопрос любого типа. v-model — ответ в форме API:
  * { text_value, rich_text_value, number_value, boolean_value, scale_item_id, option_id, option_ids, ranking, is_skipped }.
  */
+import { UiInput } from 'sk-ui'
 import { computed, useId } from 'vue'
 import { htmlToText, textToHtml } from '@/utils/richText'
 
@@ -115,19 +116,18 @@ const choiceClass = (active) =>
       @input="update({ rich_text_value: textToHtml($event.target.value) })"
     />
 
-    <div v-else-if="question.question_type === 'number'" class="grid max-w-xs gap-1.5">
-      <input
-        type="number"
-        inputmode="decimal"
-        :value="model.number_value ?? ''"
-        :min="question.min_number ?? undefined"
-        :max="question.max_number ?? undefined"
-        class="h-10 rounded-control border border-line bg-surface px-3 outline-none focus:border-brand-500"
-        :aria-label="question.text"
-        @input="update({ number_value: $event.target.value === '' ? null : Number($event.target.value) })"
-      />
-      <p v-if="numberHint" class="text-sm text-ink-muted">{{ numberHint }}</p>
-    </div>
+    <UiInput
+      v-else-if="question.question_type === 'number'"
+      class="max-w-xs"
+      type="number"
+      inputmode="decimal"
+      :model-value="model.number_value ?? ''"
+      :min="question.min_number ?? undefined"
+      :max="question.max_number ?? undefined"
+      :hint="numberHint"
+      :aria-label="question.text"
+      @update:model-value="update({ number_value: $event === '' ? null : Number($event) })"
+    />
 
     <div v-else-if="question.question_type === 'yes_no'" class="flex gap-2" role="radiogroup" :aria-label="question.text">
       <button

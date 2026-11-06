@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
-import { errorMessage, UiBadge, UiButton, UiInput } from 'sk-ui'
+import { errorMessage, SkeletonPage, UiBadge, UiButton, UiCard, UiConfirm, UiCopyField, UiInput } from 'sk-ui'
 import * as api from '@/api/surveys'
 import PersonPicker from '@/components/editor/PersonPicker.vue'
 import QuestionEditor from '@/components/editor/QuestionEditor.vue'
@@ -24,6 +24,20 @@ const questionError = ref('')
 const saving = ref(false)
 const scaleForm = ref(false)
 const sectionDraft = ref(null) // { id?, title, description }
+
+// Подтверждение удаления
+const removal = ref(null) // { title, text, action }
+const removing = ref(false)
+
+async function confirmRemoval() {
+  removing.value = true
+  try {
+    await removal.value.action()
+  } finally {
+    removing.value = false
+    removal.value = null
+  }
+}
 
 // Настройки
 const settings = ref(null)
@@ -105,13 +119,17 @@ async function saveQuestion(payload, question) {
   }
 }
 
-async function removeQuestion(question) {
-  if (!confirm(`Удалить вопрос «${question.text}»?`)) return
-  await run(async () => {
-    await api.deleteQuestion(question.id)
-    editing.value = null
-    await reload()
-  })
+function removeQuestion(question) {
+  removal.value = {
+    title: 'Удалить вопрос?',
+    text: `«${question.text}»`,
+    action: () =>
+      run(async () => {
+        await api.deleteQuestion(question.id)
+        editing.value = null
+        await reload()
+      }),
+  }
 }
 
 function startNew(section) {
@@ -167,12 +185,16 @@ async function saveSection() {
   })
 }
 
-async function removeSection(section) {
-  if (!confirm(`Удалить раздел «${section.title}»? Вопросы останутся без раздела.`)) return
-  await run(async () => {
-    await api.deleteSection(section.id)
-    await reload()
-  })
+function removeSection(section) {
+  removal.value = {
+    title: 'Удалить раздел?',
+    text: `«${section.title}». Вопросы останутся без раздела.`,
+    action: () =>
+      run(async () => {
+        await api.deleteSection(section.id)
+        await reload()
+      }),
+  }
 }
 
 function onScaleCreated(scale) {
@@ -197,10 +219,15 @@ async function copy() {
   if (copied) await router.push({ name: 'survey', params: { id: copied.id } })
 }
 
-async function remove() {
-  if (!confirm('Удалить опрос? Это возможно, только пока по нему нет отправленных ответов.')) return
-  const done = await run(() => api.deleteSurvey(props.id))
-  if (done !== undefined) await router.push({ name: 'surveys' })
+function remove() {
+  removal.value = {
+    title: 'Удалить опрос?',
+    text: 'Это возможно, только пока по нему нет отправленных ответов.',
+    action: async () => {
+      const done = await run(() => api.deleteSurvey(props.id))
+      if (done !== undefined) await router.push({ name: 'surveys' })
+    },
+  }
 }
 
 // --- Публикации ---
@@ -254,15 +281,6 @@ async function togglePublishing(p) {
   })
 }
 
-async function copyLink(p) {
-  try {
-    await navigator.clipboard.writeText(publicUrl(p))
-    notice.value = 'Ссылка скопирована'
-  } catch {
-    notice.value = publicUrl(p)
-  }
-}
-
 const tabs = { questions: 'Вопросы', publishings: 'Публикации', settings: 'Настройки' }
 const textarea = 'rounded-control border border-line bg-surface p-3 outline-none focus:border-brand-500'
 </script>
@@ -300,10 +318,10 @@ const textarea = 'rounded-control border border-line bg-surface p-3 outline-none
           <h2 class="text-lg font-semibold">{{ group.section.title || 'Раздел без названия' }}</h2>
           <UiBadge v-if="!group.section.is_active" tone="warning">Скрыт</UiBadge>
           <div class="ml-auto flex gap-1 text-sm">
-            <button type="button" class="rounded-control px-2 py-1 hover:bg-brand-50" aria-label="Раздел выше" @click="moveSection(group.section, -1)">↑</button>
-            <button type="button" class="rounded-control px-2 py-1 hover:bg-brand-50" aria-label="Раздел ниже" @click="moveSection(group.section, 1)">↓</button>
-            <button type="button" class="rounded-control px-2 py-1 hover:bg-brand-50" @click="sectionDraft = { id: group.section.id, title: group.section.title, description: group.section.description }">Изменить</button>
-            <button type="button" class="rounded-control px-2 py-1 text-red-600 hover:bg-red-50" @click="removeSection(group.section)">Удалить</button>
+            <UiButton size="sm" variant="ghost" aria-label="Раздел выше" @click="moveSection(group.section, -1)">↑</UiButton>
+            <UiButton size="sm" variant="ghost" aria-label="Раздел ниже" @click="moveSection(group.section, 1)">↓</UiButton>
+            <UiButton size="sm" variant="ghost" @click="sectionDraft = { id: group.section.id, title: group.section.title, description: group.section.description }">Изменить</UiButton>
+            <UiButton size="sm" variant="ghost" class="text-red-600" @click="removeSection(group.section)">Удалить</UiButton>
           </div>
         </div>
         <p v-if="group.section?.description" class="-mt-2 text-sm text-ink-muted">{{ group.section.description }}</p>
@@ -322,7 +340,7 @@ const textarea = 'rounded-control border border-line bg-surface p-3 outline-none
             @delete="removeQuestion(question)"
             @new-scale="scaleForm = true"
           />
-          <div v-else class="flex items-start gap-3 rounded-card border border-line bg-surface p-4" :class="!question.is_active ? 'opacity-60' : ''">
+          <UiCard v-else class="flex items-start gap-3" :class="!question.is_active ? 'opacity-60' : ''">
             <div class="min-w-0 flex-1">
               <p class="font-medium">{{ question.text }}<span v-if="question.is_required" class="text-red-600"> *</span></p>
               <p class="mt-1 flex flex-wrap gap-2 text-xs text-ink-muted">
@@ -333,11 +351,11 @@ const textarea = 'rounded-control border border-line bg-surface p-3 outline-none
               </p>
             </div>
             <div class="flex shrink-0 gap-1 text-sm">
-              <button type="button" class="rounded-control px-2 py-1 hover:bg-brand-50 disabled:opacity-30" :disabled="index === 0" aria-label="Выше" @click="moveQuestion(question, -1)">↑</button>
-              <button type="button" class="rounded-control px-2 py-1 hover:bg-brand-50 disabled:opacity-30" :disabled="index === group.questions.length - 1" aria-label="Ниже" @click="moveQuestion(question, 1)">↓</button>
-              <button type="button" class="rounded-control px-2 py-1 font-medium text-brand-700 hover:bg-brand-50" @click="(editing = question.id), (questionError = '')">Изменить</button>
+              <UiButton size="sm" variant="ghost" :disabled="index === 0" aria-label="Выше" @click="moveQuestion(question, -1)">↑</UiButton>
+              <UiButton size="sm" variant="ghost" :disabled="index === group.questions.length - 1" aria-label="Ниже" @click="moveQuestion(question, 1)">↓</UiButton>
+              <UiButton size="sm" variant="ghost" class="text-brand-700!" @click="(editing = question.id), (questionError = '')">Изменить</UiButton>
             </div>
-          </div>
+          </UiCard>
         </template>
 
         <QuestionEditor
@@ -377,16 +395,13 @@ const textarea = 'rounded-control border border-line bg-surface p-3 outline-none
       <p class="text-sm text-ink-muted">
         Публикация — это ссылка на опрос для конкретной группы и периода. Ответы и результаты собираются по публикации.
       </p>
-      <article v-for="p in publishings" :key="p.id" class="grid gap-3 rounded-card border border-line bg-surface p-4">
+      <UiCard v-for="p in publishings" :key="p.id" class="grid gap-3">
         <div class="flex flex-wrap items-center gap-2">
           <h2 class="font-semibold">{{ p.title }}</h2>
           <UiBadge :tone="p.is_active ? 'success' : 'warning'">{{ p.is_active ? 'Принимает ответы' : 'Закрыта' }}</UiBadge>
           <UiBadge>{{ p.is_anonymous ? 'Анонимная' : 'С входом через SkolStream' }}</UiBadge>
         </div>
-        <div class="flex flex-wrap items-center gap-2">
-          <code class="min-w-0 flex-1 truncate rounded-control bg-canvas px-3 py-2 text-sm">{{ publicUrl(p) }}</code>
-          <UiButton size="sm" @click="copyLink(p)">Скопировать ссылку</UiButton>
-        </div>
+        <UiCopyField :value="publicUrl(p)" label="Ссылка на опрос" />
         <p class="text-sm text-ink-muted">
           Отправлено: {{ p.submitted_count }} · Начато, не отправлено: {{ p.in_progress_count }}
           <template v-if="p.observers.length"> · Наблюдатели: {{ p.observers.map((o) => o.full_name).join(', ') }}</template>
@@ -396,7 +411,7 @@ const textarea = 'rounded-control border border-line bg-surface p-3 outline-none
           <UiButton size="sm" @click="editPublishing(p)">Изменить</UiButton>
           <UiButton size="sm" variant="ghost" @click="togglePublishing(p)">{{ p.is_active ? 'Закрыть приём ответов' : 'Открыть снова' }}</UiButton>
         </div>
-      </article>
+      </UiCard>
 
       <form v-if="publishingDraft" class="grid gap-4 rounded-card border border-brand-200 bg-surface p-4" @submit.prevent="savePublishing">
         <UiInput v-model="publishingDraft.title" label="Название публикации" placeholder="Например, «Опрос в конце года, 2026»" required />
@@ -406,8 +421,8 @@ const textarea = 'rounded-control border border-line bg-surface p-3 outline-none
         </label>
         <p v-if="!publishingDraft.is_anonymous" class="-mt-2 text-xs text-ink-muted">Отвечающие входят через SkolStream; у каждого одно прохождение, в выгрузке — ФИО и класс.</p>
         <div class="flex flex-wrap gap-4">
-          <label class="grid gap-1.5 text-sm font-medium">Открыть с <input v-model="publishingDraft.opens_at" type="datetime-local" class="h-10 rounded-control border border-line bg-surface px-3" /></label>
-          <label class="grid gap-1.5 text-sm font-medium">Закрыть после <input v-model="publishingDraft.closes_at" type="datetime-local" class="h-10 rounded-control border border-line bg-surface px-3" /></label>
+          <UiInput v-model="publishingDraft.opens_at" label="Открыть с" type="datetime-local" />
+          <UiInput v-model="publishingDraft.closes_at" label="Закрыть после" type="datetime-local" />
         </div>
         <PersonPicker v-model="publishingDraft.observers" label="Наблюдатели" hint="Видят результаты этой публикации, но не могут менять опрос." />
         <div class="flex gap-2">
@@ -437,17 +452,29 @@ const textarea = 'rounded-control border border-line bg-surface p-3 outline-none
         <UiButton type="submit" variant="primary" class="justify-self-start">Сохранить</UiButton>
       </form>
 
-      <div v-if="isOwner" class="grid gap-4 rounded-card border border-line bg-surface p-5">
+      <UiCard v-if="isOwner" class="grid gap-4">
         <PersonPicker v-model="editors" label="Редакторы" hint="Могут менять вопросы и публикации, видят результаты." />
         <UiButton class="justify-self-start" @click="saveEditors">Сохранить редакторов</UiButton>
-      </div>
+      </UiCard>
 
       <div class="flex flex-wrap gap-2">
         <UiButton @click="copy">Сделать копию опроса</UiButton>
         <UiButton v-if="isOwner" variant="ghost" class="text-red-600" @click="remove">Удалить опрос</UiButton>
       </div>
     </section>
+
+    <UiConfirm
+      :open="!!removal"
+      :title="removal?.title ?? ''"
+      confirm-label="Удалить"
+      variant="danger"
+      :loading="removing"
+      @update:open="removal = null"
+      @confirm="confirmRemoval"
+    >
+      {{ removal?.text }}
+    </UiConfirm>
   </div>
   <p v-else-if="error" role="alert" class="rounded-control bg-red-100 px-3 py-2 text-sm text-red-800">{{ error }}</p>
-  <p v-else class="text-ink-muted" role="status">Загружаем опрос…</p>
+  <SkeletonPage v-else />
 </template>

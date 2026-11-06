@@ -29,8 +29,6 @@ async function save() {
     saving.value = false
   }
 }
-
-const field = 'h-10 rounded-control border border-line bg-surface px-3 outline-none focus:border-brand-500'
 </script>
 
 <template>
@@ -42,15 +40,15 @@ const field = 'h-10 rounded-control border border-line bg-surface px-3 outline-n
       <label class="flex items-center gap-2"><input v-model="form.scale_type" type="radio" value="items" class="accent-brand-600" /> Подписи</label>
     </div>
     <div v-if="form.scale_type === 'generated'" class="flex flex-wrap gap-4">
-      <label class="grid gap-1.5 text-sm font-medium">От <input v-model="form.min_value" type="number" :class="[field, 'w-24']" /></label>
-      <label class="grid gap-1.5 text-sm font-medium">До <input v-model="form.max_value" type="number" :class="[field, 'w-24']" /></label>
-      <label class="grid gap-1.5 text-sm font-medium">Шаг <input v-model="form.step" type="number" min="1" :class="[field, 'w-24']" /></label>
+      <UiInput v-model="form.min_value" label="От" type="number" class="w-24" />
+      <UiInput v-model="form.max_value" label="До" type="number" class="w-24" />
+      <UiInput v-model="form.step" label="Шаг" type="number" min="1" class="w-24" />
     </div>
     <div v-else class="grid gap-2">
       <p class="text-xs text-ink-muted">По порядку от меньшего к большему, баллы — номер подписи.</p>
       <div v-for="(item, index) in form.items" :key="index" class="flex gap-2">
-        <input v-model="item.title" :class="[field, 'flex-1']" :placeholder="`Подпись ${index + 1}`" :aria-label="`Подпись ${index + 1}`" />
-        <button type="button" class="px-2 text-ink-muted hover:text-red-600" aria-label="Удалить" @click="form.items.splice(index, 1)">✕</button>
+        <UiInput v-model="item.title" class="flex-1" :placeholder="`Подпись ${index + 1}`" :aria-label="`Подпись ${index + 1}`" />
+        <UiButton size="sm" variant="ghost" class="text-ink-muted hover:text-red-600" aria-label="Удалить" @click="form.items.splice(index, 1)">✕</UiButton>
       </div>
       <UiButton size="sm" variant="ghost" class="justify-self-start" @click="form.items.push({ title: '' })">+ Подпись</UiButton>
     </div>
