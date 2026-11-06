@@ -1,4 +1,4 @@
-import { http } from './http'
+import { http } from 'sk-ui'
 
 /** Ключ прохождения хранится в браузере по токену публикации: можно закрыть вкладку и продолжить. */
 const storageKey = (token) => `sks-response:${token}`

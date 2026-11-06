@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue'
-import UiButton from '@/components/ui/UiButton.vue'
+import { UiButton } from 'sk-ui'
 import { QUESTION_TYPES } from '@/utils/questionTypes'
 
 const props = defineProps({

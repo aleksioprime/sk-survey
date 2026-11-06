@@ -1,9 +1,8 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
-import { errorMessage } from '@/api/http'
+import { errorMessage, UiBadge } from 'sk-ui'
 import { exportUrl, getPublishing, getResults } from '@/api/surveys'
-import UiBadge from '@/components/ui/UiBadge.vue'
 import { QUESTION_TYPES } from '@/utils/questionTypes'
 
 const props = defineProps({ id: { type: String, required: true } })

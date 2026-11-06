@@ -1,14 +1,11 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
-import { errorMessage } from '@/api/http'
+import { errorMessage, UiBadge, UiButton, UiInput } from 'sk-ui'
 import * as api from '@/api/surveys'
 import PersonPicker from '@/components/editor/PersonPicker.vue'
 import QuestionEditor from '@/components/editor/QuestionEditor.vue'
 import ScaleEditor from '@/components/editor/ScaleEditor.vue'
-import UiBadge from '@/components/ui/UiBadge.vue'
-import UiButton from '@/components/ui/UiButton.vue'
-import UiInput from '@/components/ui/UiInput.vue'
 import { QUESTION_TYPES } from '@/utils/questionTypes'
 
 const props = defineProps({ id: { type: String, required: true } })

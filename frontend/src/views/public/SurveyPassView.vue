@@ -6,7 +6,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { skolstreamLoginUrl } from '@/api/auth'
-import { errorMessage } from '@/api/http'
+import { BrandMark, errorMessage, SchoolFooter, UiButton } from 'sk-ui'
 import {
   fetchPublicSurvey,
   fetchResponse,
@@ -17,10 +17,7 @@ import {
   startResponse,
   submitResponse,
 } from '@/api/public'
-import BrandMark from '@/components/brand/BrandMark.vue'
-import SchoolFooter from '@/components/brand/SchoolFooter.vue'
 import QuestionField from '@/components/questions/QuestionField.vue'
-import UiButton from '@/components/ui/UiButton.vue'
 import { pageTitle } from '@/brand'
 import { paragraphs } from '@/utils/richText'
 import { seededShuffle } from '@/utils/shuffle'
