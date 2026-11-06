@@ -6,7 +6,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { skolstreamLoginUrl } from '@/api/auth'
-import { BrandMark, errorMessage, SchoolFooter, UiButton } from 'sk-ui'
+import { BrandMark, errorMessage, SchoolFooter, SkeletonPage, UiButton, UiCard } from 'sk-ui'
 import {
   fetchPublicSurvey,
   fetchResponse,
@@ -248,12 +248,12 @@ async function submit() {
   <div class="flex min-h-dvh flex-col">
     <div class="mx-auto w-full max-w-2xl flex-1 px-4 py-8 sm:py-12">
       <BrandMark class="mb-8" />
-      <p v-if="stage === 'loading'" class="text-ink-muted" role="status">Загружаем опрос…</p>
+      <SkeletonPage v-if="stage === 'loading'" />
 
-      <div v-else-if="stage === 'error'" class="rounded-card border border-line bg-surface p-6">
+      <UiCard v-else-if="stage === 'error'" class="p-6">
         <h1 class="text-xl font-bold">Опрос недоступен</h1>
         <p class="mt-2 text-ink-muted">{{ loadError }}</p>
-      </div>
+      </UiCard>
 
       <template v-else>
         <header class="mb-6">
@@ -261,7 +261,7 @@ async function submit() {
           <h1 class="mt-1 text-2xl font-bold sm:text-3xl">{{ survey.title }}</h1>
         </header>
 
-        <section v-if="stage === 'login'" class="rounded-card border border-line bg-surface p-6">
+        <UiCard v-if="stage === 'login'" class="p-6">
           <p>Этот опрос не анонимный: войдите, чтобы ответить. Ответы будут связаны с вашей учётной записью.</p>
           <a
             :href="skolstreamLoginUrl(route.fullPath)"
@@ -269,9 +269,9 @@ async function submit() {
           >
             Войти через SkolStream
           </a>
-        </section>
+        </UiCard>
 
-        <section v-else-if="stage === 'intro'" class="rounded-card border border-line bg-surface p-6">
+        <UiCard v-else-if="stage === 'intro'" class="p-6">
           <div v-if="survey.description || survey.intro_text" class="prose-text text-ink">
             <p v-for="(paragraph, index) in paragraphs(survey.intro_text || survey.description)" :key="index" class="whitespace-pre-line">
               {{ paragraph }}
@@ -286,7 +286,7 @@ async function submit() {
           <UiButton class="mt-6 w-full sm:w-auto" variant="primary" :loading="busy" @click="begin">
             {{ responseToken ? 'Продолжить' : 'Начать' }}
           </UiButton>
-        </section>
+        </UiCard>
 
         <section v-else-if="stage === 'questions'">
           <div class="mb-6">
@@ -352,7 +352,7 @@ async function submit() {
           </div>
         </section>
 
-        <section v-else-if="stage === 'done'" class="rounded-card border border-line bg-surface p-6 text-center">
+        <UiCard v-else-if="stage === 'done'" class="p-6 text-center">
           <div class="mx-auto grid size-12 place-items-center rounded-full bg-brand-100 text-2xl text-brand-700" aria-hidden="true">✓</div>
           <h2 class="mt-4 text-xl font-bold">Ответы отправлены</h2>
           <div class="prose-text mt-3 text-ink-muted">
@@ -360,7 +360,7 @@ async function submit() {
               {{ paragraph }}
             </p>
           </div>
-        </section>
+        </UiCard>
       </template>
     </div>
     <SchoolFooter />

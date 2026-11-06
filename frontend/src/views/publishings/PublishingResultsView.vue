@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
-import { errorMessage, UiBadge } from 'sk-ui'
+import { errorMessage, SkeletonPage, UiBadge, UiCard } from 'sk-ui'
 import { exportUrl, getPublishing, getResults } from '@/api/surveys'
 import { QUESTION_TYPES } from '@/utils/questionTypes'
 
@@ -77,7 +77,7 @@ const format = (value) => (value == null ? '—' : Number(value).toLocaleString(
       <p v-if="!total" class="mt-10 text-center text-ink-muted">Ответов пока нет.</p>
 
       <div v-else class="mt-6 grid gap-4">
-        <article v-for="(q, index) in results.questions" :key="q.question_id" class="rounded-card border border-line bg-surface p-5">
+        <UiCard v-for="(q, index) in results.questions" :key="q.question_id">
           <p class="text-xs text-ink-muted">
             {{ index + 1 }} · {{ QUESTION_TYPES[q.question_type] }} · ответили {{ q.answered }}<template v-if="q.skipped">, пропустили {{ q.skipped }}</template>
             <template v-if="!q.is_active"> · вопрос скрыт</template>
@@ -141,9 +141,9 @@ const format = (value) => (value == null ? '—' : Number(value).toLocaleString(
               Показать ещё ({{ q.texts.length - shownTexts(q).length }})
             </button>
           </template>
-        </article>
+        </UiCard>
       </div>
     </template>
-    <p v-else-if="!error" class="mt-4 text-ink-muted" role="status">Загружаем результаты…</p>
+    <SkeletonPage v-else-if="!error" class="mt-4" />
   </div>
 </template>

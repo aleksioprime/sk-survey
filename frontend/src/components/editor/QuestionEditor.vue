@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue'
-import { UiButton } from 'sk-ui'
+import { UiButton, UiInput, UiSelect } from 'sk-ui'
 import { QUESTION_TYPES } from '@/utils/questionTypes'
 
 const props = defineProps({
@@ -35,6 +35,7 @@ const answered = computed(() => (source?.answers_count || 0) > 0)
 const hasOptions = computed(() => ['single_choice', 'multiple_choice', 'ranking'].includes(form.value.question_type))
 const hasSelections = computed(() => ['multiple_choice', 'ranking'].includes(form.value.question_type))
 const isScale = computed(() => form.value.question_type === 'scale')
+const scaleMissing = ref(false)
 
 function addOption() {
   form.value.options.push({ title: '' })
@@ -56,6 +57,9 @@ const numberOrNull = (value) => (value === '' || value == null ? null : Number(v
 
 function save() {
   const f = form.value
+  // UiSelect - кнопка, браузер не проверяет её как обязательное поле
+  scaleMissing.value = isScale.value && !f.scale_id
+  if (scaleMissing.value) return
   const payload = {
     text: f.text.trim(),
     description: f.description.trim(),
@@ -78,8 +82,6 @@ function save() {
   }
   emit('save', payload)
 }
-
-const field = 'h-10 rounded-control border border-line bg-surface px-3 outline-none focus:border-brand-500'
 </script>
 
 <template>
@@ -96,17 +98,17 @@ const field = 'h-10 rounded-control border border-line bg-surface px-3 outline-n
     <div class="grid gap-4 sm:grid-cols-2">
       <div class="grid gap-1.5">
         <label class="text-sm font-medium" for="q-type">Тип ответа</label>
-        <select id="q-type" v-model="form.question_type" :class="field" :disabled="answered">
+        <UiSelect id="q-type" v-model="form.question_type" :disabled="answered">
           <option v-for="(label, key) in QUESTION_TYPES" :key="key" :value="key">{{ label }}</option>
-        </select>
+        </UiSelect>
         <p v-if="answered" class="text-xs text-ink-muted">На вопрос уже отвечали — тип менять нельзя.</p>
       </div>
       <div class="grid gap-1.5">
         <label class="text-sm font-medium" for="q-section">Раздел</label>
-        <select id="q-section" v-model="form.section_id" :class="field">
+        <UiSelect id="q-section" v-model="form.section_id">
           <option :value="null">Без раздела</option>
           <option v-for="section in sections" :key="section.id" :value="section.id">{{ section.title || 'Без названия' }}</option>
-        </select>
+        </UiSelect>
       </div>
     </div>
 
@@ -114,20 +116,21 @@ const field = 'h-10 rounded-control border border-line bg-surface px-3 outline-n
       <div class="flex flex-wrap items-end gap-3">
         <div class="grid min-w-56 flex-1 gap-1.5">
           <label class="text-sm font-medium" for="q-scale">Шкала</label>
-          <select id="q-scale" v-model="form.scale_id" :class="field" required>
+          <UiSelect id="q-scale" v-model="form.scale_id" :invalid="scaleMissing" @update:model-value="scaleMissing = false">
             <option v-for="scale in scales" :key="scale.id" :value="scale.id">{{ scale.title }}</option>
-          </select>
+          </UiSelect>
+          <p v-if="scaleMissing" role="alert" class="text-sm text-red-600">Выберите шкалу</p>
         </div>
         <UiButton size="sm" @click="emit('new-scale')">Новая шкала</UiButton>
       </div>
       <div class="grid gap-2">
         <p class="text-sm font-medium">Диапазоны для отчёта <span class="font-normal text-ink-muted">— например, «1–3: низкая»</span></p>
         <div v-for="(range, index) in form.ranges" :key="index" class="flex flex-wrap items-center gap-2">
-          <input v-model.number="range.from_value" type="number" :class="[field, 'w-20']" aria-label="От" placeholder="от" />
+          <UiInput v-model.number="range.from_value" type="number" class="w-20" aria-label="От" placeholder="от" />
           <span>–</span>
-          <input v-model.number="range.to_value" type="number" :class="[field, 'w-20']" aria-label="До" placeholder="до" />
-          <input v-model="range.title" :class="[field, 'min-w-40 flex-1']" aria-label="Название диапазона" placeholder="Название" />
-          <button type="button" class="px-2 text-ink-muted hover:text-red-600" :aria-label="`Удалить диапазон ${range.title}`" @click="form.ranges.splice(index, 1)">✕</button>
+          <UiInput v-model.number="range.to_value" type="number" class="w-20" aria-label="До" placeholder="до" />
+          <UiInput v-model="range.title" class="min-w-40 flex-1" aria-label="Название диапазона" placeholder="Название" />
+          <UiButton size="sm" variant="ghost" class="text-ink-muted hover:text-red-600" :aria-label="`Удалить диапазон ${range.title}`" @click="form.ranges.splice(index, 1)">✕</UiButton>
         </div>
         <UiButton size="sm" variant="ghost" class="justify-self-start" @click="addRange">+ Диапазон</UiButton>
       </div>
@@ -136,18 +139,19 @@ const field = 'h-10 rounded-control border border-line bg-surface px-3 outline-n
     <div v-if="hasOptions" class="grid gap-2">
       <p class="text-sm font-medium">Варианты ответа</p>
       <div v-for="(option, index) in form.options" :key="option.id || `new-${index}`" class="flex items-center gap-2">
-        <input
+        <UiInput
           v-model="option.title"
-          :class="[field, 'flex-1', option.is_active === false ? 'text-ink-muted line-through' : '']"
+          class="flex-1"
+          :class="option.is_active === false ? '[&_input]:text-ink-muted [&_input]:line-through' : ''"
           :aria-label="`Вариант ${index + 1}`"
           :placeholder="`Вариант ${index + 1}`"
         />
         <label v-if="option.is_active === false" class="flex items-center gap-1 text-xs text-ink-muted">
           <input v-model="option.is_active" type="checkbox" class="accent-brand-600" /> вернуть
         </label>
-        <button type="button" class="px-1.5 disabled:opacity-30" :disabled="index === 0" aria-label="Выше" @click="moveOption(index, -1)">↑</button>
-        <button type="button" class="px-1.5 disabled:opacity-30" :disabled="index === form.options.length - 1" aria-label="Ниже" @click="moveOption(index, 1)">↓</button>
-        <button type="button" class="px-1.5 text-ink-muted hover:text-red-600" :aria-label="`Удалить вариант ${index + 1}`" @click="removeOption(index)">✕</button>
+        <UiButton size="sm" variant="ghost" :disabled="index === 0" aria-label="Выше" @click="moveOption(index, -1)">↑</UiButton>
+        <UiButton size="sm" variant="ghost" :disabled="index === form.options.length - 1" aria-label="Ниже" @click="moveOption(index, 1)">↓</UiButton>
+        <UiButton size="sm" variant="ghost" class="text-ink-muted hover:text-red-600" :aria-label="`Удалить вариант ${index + 1}`" @click="removeOption(index)">✕</UiButton>
       </div>
       <UiButton size="sm" variant="ghost" class="justify-self-start" @click="addOption">+ Вариант</UiButton>
       <p v-if="answered" class="text-xs text-ink-muted">Варианты, которые уже выбирали, при удалении выключаются и остаются в результатах.</p>
@@ -157,25 +161,13 @@ const field = 'h-10 rounded-control border border-line bg-surface px-3 outline-n
     </div>
 
     <div v-if="hasSelections" class="flex flex-wrap gap-4">
-      <label class="grid gap-1.5 text-sm font-medium">
-        Минимум выборов
-        <input v-model="form.min_selections" type="number" min="0" :class="[field, 'w-28']" />
-      </label>
-      <label class="grid gap-1.5 text-sm font-medium">
-        Максимум выборов
-        <input v-model="form.max_selections" type="number" min="1" :class="[field, 'w-28']" />
-      </label>
+      <UiInput v-model="form.min_selections" label="Минимум выборов" type="number" min="0" class="w-40" />
+      <UiInput v-model="form.max_selections" label="Максимум выборов" type="number" min="1" class="w-40" />
     </div>
 
     <div v-if="form.question_type === 'number'" class="flex flex-wrap gap-4">
-      <label class="grid gap-1.5 text-sm font-medium">
-        Минимальное число
-        <input v-model="form.min_number" type="number" :class="[field, 'w-32']" />
-      </label>
-      <label class="grid gap-1.5 text-sm font-medium">
-        Максимальное число
-        <input v-model="form.max_number" type="number" :class="[field, 'w-32']" />
-      </label>
+      <UiInput v-model="form.min_number" label="Минимальное число" type="number" class="w-40" />
+      <UiInput v-model="form.max_number" label="Максимальное число" type="number" class="w-40" />
     </div>
 
     <div class="flex flex-wrap gap-5 text-sm">
