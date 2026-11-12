@@ -43,7 +43,7 @@ MATRIX_TYPES = ('matrix_single', 'matrix_multiple')
 CHOICE_TYPES = ('single_choice', 'multiple_choice', 'ranking')
 
 SCALE_GENERATED = 'generated'  # значения от min до max с шагом
-SCALE_ITEMS = 'items'  # значения — элементы шкалы
+SCALE_ITEMS = 'items'  # значения - элементы шкалы
 
 ROLE_OWNER = 'owner'
 ROLE_EDITOR = 'editor'
@@ -186,7 +186,7 @@ class Option(IdMixin, TimestampMixin, Base):
 
 
 class ScaleRange(IdMixin, TimestampMixin, Base):
-    """Диапазон значений шкалы для отчёта: «1–3 — крайне низкая»."""
+    """Диапазон значений шкалы для отчёта: «1–3 - крайне низкая»."""
 
     __tablename__ = 'survey_question_scale_ranges'
 
@@ -208,7 +208,7 @@ class Publishing(IdMixin, TimestampMixin, Base):
     title: Mapped[str] = mapped_column(String(500))
     public_token: Mapped[str] = mapped_column(String(64), unique=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default='true')
-    # Анонимная — без входа, ответ не связан с человеком. Иначе вход через SkolStream и один ответ на человека
+    # Анонимная - без входа, ответ не связан с человеком. Иначе вход через SkolStream и один ответ на человека
     is_anonymous: Mapped[bool] = mapped_column(Boolean, default=True, server_default='true')
     opens_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     closes_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

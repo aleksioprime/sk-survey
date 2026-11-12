@@ -18,7 +18,7 @@ class SurveyAuthSettings(AuthSettings):
 
 
 class Settings(ServiceSettings):
-    """Общие поля (БД, Redis, почта, SkolStream, вход) — в sk_common.config.ServiceSettings."""
+    """Общие поля (БД, Redis, почта, SkolStream, вход) - в sk_common.config.ServiceSettings."""
 
     project_name: str = 'SK Survey'
     brand_color: str = '#0f766e'

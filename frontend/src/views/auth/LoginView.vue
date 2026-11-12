@@ -1,7 +1,7 @@
 <script setup>
 /**
  * Вход только через SkolStream: ученики и сотрудники гимназии там уже есть.
- * Вход по паролю — запасной, для администратора (пароль задаётся в самом сервисе,
+ * Вход по паролю - запасной, для администратора (пароль задаётся в самом сервисе,
  * пароль от SkolStream здесь не подходит); он спрятан за ссылкой внизу.
  */
 import { computed, onMounted, ref } from 'vue'
@@ -28,7 +28,7 @@ onMounted(async () => {
   } catch {
     // без списка способов показываем кнопку SkolStream
   }
-  // Если вход через SkolStream не настроен, запасной вход — единственный
+  // Если вход через SkolStream не настроен, запасной вход - единственный
   if (!providers.value.skolstream) showPassword.value = true
 })
 
@@ -70,7 +70,7 @@ async function submitPassword() {
             >
               Войти через SkolStream
             </a>
-            <p class="mt-2 text-center text-xs text-ink-muted">Логин и пароль — те же, что в SkolStream</p>
+            <p class="mt-2 text-center text-xs text-ink-muted">Логин и пароль - те же, что в SkolStream</p>
           </template>
 
           <form v-if="showPassword" class="mt-6 grid gap-4 border-t border-line pt-5" novalidate @submit.prevent="submitPassword">

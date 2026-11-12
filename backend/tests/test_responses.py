@@ -85,7 +85,7 @@ async def test_required_questions_block_submit(db, client):
     built = await build_survey(client)
     headers = await _start(client, built['publishing']['public_token'])
     await client.put(ANSWER.format(built['questions']['text']['id']), json={'text_value': 'Ответ'}, headers=headers)
-    # Необязательный вопрос можно пропустить, обязательный — нет
+    # Необязательный вопрос можно пропустить, обязательный - нет
     skip = await client.put(
         ANSWER.format(built['questions']['yes_no']['id']), json={'is_skipped': True}, headers=headers
     )
@@ -121,7 +121,7 @@ async def test_personal_publishing_needs_login_and_keeps_one_response(db, client
         headers = {'X-Response-Token': first['response_token']}
         await student.put(ANSWER.format(built['questions']['text']['id']), json={'text_value': 'Да'}, headers=headers)
 
-        # С другого устройства — то же прохождение с сохранёнными ответами, старый ключ больше не действует
+        # С другого устройства - то же прохождение с сохранёнными ответами, старый ключ больше не действует
         second = (await student.post(f'/api/v1/public/s/{token}/responses')).json()
         assert second['response_id'] == first['response_id'] and len(second['answers']) == 1
         assert (await student.get('/api/v1/public/responses/current', headers=headers)).status_code == 401

@@ -1,4 +1,4 @@
-"""Результаты публикации: сводка по вопросам и выгрузка ответов. Считается в памяти — ответов сотни."""
+"""Результаты публикации: сводка по вопросам и выгрузка ответов. Считается в памяти - ответов сотни."""
 
 import statistics
 from collections import Counter
@@ -309,7 +309,7 @@ def export_xlsx(data: Dataset) -> bytes:
             summary.append([row.title])
             _export_choices(summary, row, row.answered)
         for item in result.ranking:
-            summary.append(['', f'{item.title} — средняя позиция', item.average_rank, None])
+            summary.append(['', f'{item.title} - средняя позиция', item.average_rank, None])
         for item in result.ranges:
             summary.append(['', item.title, item.count, item.percent])
         if result.mean is not None:

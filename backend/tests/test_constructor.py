@@ -171,7 +171,7 @@ async def test_answered_options_are_kept_inactive(db, client):
     assert by_title['Нет']['is_active'] is False and by_title['Другое']['is_active'] is True
     assert updated['answers_count'] == 1
 
-    # Тип отвеченного вопроса менять нельзя, удалять — тоже
+    # Тип отвеченного вопроса менять нельзя, удалять - тоже
     payload['question_type'] = 'multiple_choice'
     assert (await client.put(f'/api/v1/questions/{question["id"]}', json=payload)).status_code == 409
     assert (await client.delete(f'/api/v1/questions/{question["id"]}')).status_code == 409

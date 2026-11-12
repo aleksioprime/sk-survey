@@ -628,7 +628,7 @@ const textarea = 'rounded-control border border-line bg-surface p-3 outline-none
         <UiInput v-model="settings.code" label="Код" hint="Латиница, цифры, «_» и «-». Для выгрузок и поиска, необязательно." />
         <label class="grid gap-1.5 text-sm font-medium">Описание <textarea v-model="settings.description" rows="2" :class="textarea" /></label>
         <label class="grid gap-1.5 text-sm font-medium">
-          Вступительный текст <span class="font-normal text-ink-muted">— на первом экране опроса</span>
+          Вступительный текст <span class="font-normal text-ink-muted">- на первом экране опроса</span>
           <textarea v-model="settings.intro_text" rows="5" :class="textarea" />
         </label>
         <label class="grid gap-1.5 text-sm font-medium">
@@ -636,7 +636,7 @@ const textarea = 'rounded-control border border-line bg-surface p-3 outline-none
           <textarea v-model="settings.thank_you_text" rows="3" :class="textarea" />
         </label>
         <label class="flex items-center gap-2 text-sm"><input v-model="settings.is_active" type="checkbox" class="accent-brand-600" /> Опрос включён (выключенный не открывается по ссылкам)</label>
-        <label class="flex items-center gap-2 text-sm"><input v-model="settings.is_anonymous" type="checkbox" class="accent-brand-600" /> Новые публикации — анонимные</label>
+        <label class="flex items-center gap-2 text-sm"><input v-model="settings.is_anonymous" type="checkbox" class="accent-brand-600" /> Новые публикации - анонимные</label>
         <UiButton type="submit" variant="primary" class="justify-self-start">Сохранить</UiButton>
       </form>
 

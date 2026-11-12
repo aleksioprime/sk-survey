@@ -126,7 +126,7 @@ const canPublish = computed(() => survey.value.questions.some(
     <section v-if="survey" class="mt-6 grid grid-cols-[minmax(0,1fr)] gap-4">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <p class="max-w-xl text-sm text-ink-muted">
-          Публикация — это ссылка на опрос для конкретной группы и периода. Ответы и результаты собираются по публикации.
+          Публикация - это ссылка на опрос для конкретной группы и периода. Ответы и результаты собираются по публикации.
         </p>
         <UiButton variant="primary" :disabled="!canPublish || publishingSaving" @click="newPublishing">Новая публикация</UiButton>
       </div>
@@ -161,7 +161,7 @@ const canPublish = computed(() => survey.value.questions.some(
             <UiInput v-model="publishingDraft.title" label="Название публикации" placeholder="Например, «Пульс-опрос, ноябрь 2026»" maxlength="500" required autofocus />
             <label class="flex items-start gap-2 text-sm">
               <input v-model="publishingDraft.is_anonymous" type="checkbox" class="mt-0.5 size-4 shrink-0 accent-brand-600" :disabled="publishingDraft.has_responses" />
-              Анонимная — без входа, ответы не связаны с человеком
+              Анонимная - без входа, ответы не связаны с человеком
             </label>
             <p v-if="publishingDraft.has_responses" class="-mt-2 text-xs text-ink-muted">Режим анонимности зафиксирован: по публикации уже есть ответы.</p>
             <p v-else-if="!publishingDraft.is_anonymous" class="-mt-2 text-xs text-ink-muted">Участники войдут через SkolStream. В выгрузке будут ФИО и класс.</p>

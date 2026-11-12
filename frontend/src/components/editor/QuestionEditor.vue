@@ -5,7 +5,7 @@ import QuestionTypeIcon from '@/components/questions/QuestionTypeIcon.vue'
 import { MATRIX_TYPES, QUESTION_TYPES, TEXT_LIST, TEXT_LIST_MAX_ROWS } from '@/utils/questionTypes'
 
 const props = defineProps({
-  question: { type: Object, default: null }, // null — новый вопрос
+  question: { type: Object, default: null }, // null - новый вопрос
   sections: { type: Array, default: () => [] },
   scales: { type: Array, default: () => [] },
   allowCreateScale: { type: Boolean, default: true },
@@ -123,7 +123,7 @@ function save() {
       <textarea id="q-text" v-model="form.text" rows="2" required :class="editorField" class="min-h-18 p-3" />
     </div>
     <div class="grid gap-1.5">
-      <label class="text-sm font-medium" for="q-description">Пояснение <span class="font-normal text-ink-muted">— необязательно</span></label>
+      <label class="text-sm font-medium" for="q-description">Пояснение <span class="font-normal text-ink-muted">- необязательно</span></label>
       <textarea id="q-description" v-model="form.description" rows="2" :class="editorField" class="min-h-18 p-3" />
     </div>
 
@@ -136,7 +136,7 @@ function save() {
             <option v-for="(label, key) in QUESTION_TYPES" :key="key" :value="key">{{ label }}</option>
           </UiSelect>
         </div>
-        <p v-if="answered" class="text-xs text-ink-muted">На вопрос уже отвечали — тип менять нельзя.</p>
+        <p v-if="answered" class="text-xs text-ink-muted">На вопрос уже отвечали - тип менять нельзя.</p>
       </div>
       <div class="grid gap-1.5">
         <label class="text-sm font-medium" for="q-section">Раздел</label>
@@ -159,7 +159,7 @@ function save() {
         <UiButton v-if="allowCreateScale" size="sm" @click="emit('new-scale')">Новая шкала</UiButton>
       </div>
       <div class="grid gap-2">
-        <p class="text-sm font-medium">Диапазоны для отчёта <span class="font-normal text-ink-muted">— например, «1–3: низкая»</span></p>
+        <p class="text-sm font-medium">Диапазоны для отчёта <span class="font-normal text-ink-muted">- например, «1–3: низкая»</span></p>
         <div v-for="(range, index) in form.ranges" :key="index" class="flex flex-wrap items-center gap-2">
           <UiInput v-model.number="range.from_value" type="number" class="w-20" aria-label="От" placeholder="от" />
           <span>–</span>
