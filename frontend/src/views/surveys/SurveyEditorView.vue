@@ -237,7 +237,6 @@ function resetAccessDraft(members) {
 function settingsFromSurvey(data) {
   return {
     title: data.title,
-    code: data.code || '',
     description: data.description,
     intro_text: data.intro_text,
     thank_you_text: data.thank_you_text,
@@ -429,7 +428,7 @@ async function saveSettings() {
   settingsError.value = ''
   notice.value = ''
   try {
-    const data = await api.updateSurvey(props.id, { ...settings.value, code: settings.value.code.trim() || null })
+    const data = await api.updateSurvey(props.id, settings.value)
     setSurvey(data, { keepAccessDraft: true })
     notice.value = 'Настройки сохранены'
   } catch (e) {
@@ -730,7 +729,6 @@ const textarea = 'rounded-control border border-line bg-surface p-3 outline-none
       <form class="grid min-w-0 gap-4 rounded-card border border-line bg-surface p-4 sm:p-5" @submit.prevent="saveSettings">
         <fieldset class="grid min-w-0 gap-4" :disabled="settingsSaving || copying || accessSaving">
           <UiInput v-model="settings.title" :class="{ 'ui-changed': settingChanged('title') }" label="Название" required />
-          <UiInput v-model="settings.code" :class="{ 'ui-changed': settingChanged('code') }" label="Код" hint="Латиница, цифры, «_» и «-». Для выгрузок и поиска, необязательно." />
           <label class="grid gap-1.5 text-sm font-medium">Описание <textarea v-model="settings.description" rows="2" :class="[textarea, { 'ui-changed': settingChanged('description') }]" /></label>
           <label class="grid gap-1.5 text-sm font-medium">
             Вступительный текст
