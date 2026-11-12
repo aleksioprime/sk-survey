@@ -4,7 +4,6 @@ import { onBeforeRouteLeave, onBeforeRouteUpdate, RouterLink, useRoute, useRoute
 import { errorMessage, SkeletonPage, UiButton, UiCard, UiConfirm, UiFormActions, UiInput, UiSwitch } from 'sk-ui'
 import * as api from '@/api/surveys'
 import QuestionEditor from '@/components/editor/QuestionEditor.vue'
-import ScaleEditor from '@/components/editor/ScaleEditor.vue'
 import SurveyAccess from '@/components/editor/SurveyAccess.vue'
 import SurveyArchiveBadge from '@/components/SurveyArchiveBadge.vue'
 import QuestionTypeIcon from '@/components/questions/QuestionTypeIcon.vue'
@@ -33,7 +32,6 @@ const questionDirty = ref(false)
 const discardAction = ref(null)
 const questionError = ref('')
 const saving = ref(false)
-const scaleForm = ref(false)
 const sectionDraft = ref(null)
 
 // Подтверждение удаления
@@ -127,7 +125,6 @@ async function focusEditor() {
 function resetDraft() {
   questionDirty.value = false
   questionError.value = ''
-  scaleForm.value = false
   sectionDraft.value = null
   editorVersion.value += 1
 }
@@ -417,7 +414,6 @@ function removeSection(section) {
 
 function onScaleCreated(scale) {
   scales.value = [...scales.value, scale].sort((a, b) => a.title.localeCompare(b.title))
-  scaleForm.value = false
 }
 
 // --- Настройки ---
@@ -703,9 +699,8 @@ const textarea = 'rounded-control border border-line bg-surface p-3 outline-none
             @save="saveQuestion($event, currentQuestion)"
             @cancel="cancelQuestion"
             @delete="removeQuestion(currentQuestion)"
-            @new-scale="scaleForm = true"
+            @scale-created="onScaleCreated"
           />
-          <ScaleEditor v-if="scaleForm" @created="onScaleCreated" @cancel="scaleForm = false" />
         </template>
 
         <template v-else-if="selected === 'section'">

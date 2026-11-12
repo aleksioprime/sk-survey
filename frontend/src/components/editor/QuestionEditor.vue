@@ -1,8 +1,9 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
-import { UiButton, UiFormActions, UiInput, UiSelect } from 'sk-ui'
+import { UiButton, UiDialog, UiFormActions, UiInput, UiSelect } from 'sk-ui'
 import QuestionTypeIcon from '@/components/questions/QuestionTypeIcon.vue'
 import { MATRIX_TYPES, QUESTION_TYPES, TEXT_LIST, TEXT_LIST_MAX_ROWS } from '@/utils/questionTypes'
+import ScaleEditor from './ScaleEditor.vue'
 
 const props = defineProps({
   question: { type: Object, default: null }, // null - новый вопрос
@@ -13,7 +14,7 @@ const props = defineProps({
   saving: { type: Boolean, default: false },
   error: { type: String, default: '' },
 })
-const emit = defineEmits(['save', 'cancel', 'delete', 'new-scale', 'dirty'])
+const emit = defineEmits(['save', 'cancel', 'delete', 'scale-created', 'dirty'])
 
 const source = props.question
 const form = ref({
@@ -64,6 +65,15 @@ const isTextList = computed(() => form.value.question_type === TEXT_LIST)
 const rowBoundsError = ref('')
 const isScale = computed(() => form.value.question_type === 'scale')
 const scaleMissing = ref(false)
+const scaleDialogOpen = ref(false)
+const scaleSaving = ref(false)
+
+function onScaleCreated(scale) {
+  emit('scale-created', scale)
+  form.value.scale_id = scale.id
+  scaleMissing.value = false
+  scaleDialogOpen.value = false
+}
 
 function addOption() {
   form.value.options.push({ title: '' })
@@ -133,8 +143,8 @@ function save() {
         <textarea id="q-description" v-model="form.description" rows="2" :class="[editorField, changed('description')]" class="min-h-18 p-3" />
       </div>
 
-      <div class="grid gap-4 sm:grid-cols-2">
-        <div class="grid gap-1.5">
+      <div class="grid items-start gap-4 sm:grid-cols-2">
+        <div class="grid min-w-0 gap-1.5">
           <label class="text-sm font-medium" for="q-type">Тип ответа</label>
           <div class="flex min-w-0 items-center gap-2">
             <QuestionTypeIcon :type="form.question_type" class="text-brand-700" />
@@ -144,7 +154,7 @@ function save() {
           </div>
           <p v-if="answered" class="text-xs text-ink-muted">На вопрос уже отвечали - тип менять нельзя.</p>
         </div>
-        <div class="grid gap-1.5">
+        <div class="grid min-w-0 gap-1.5">
           <label class="text-sm font-medium" for="q-section">Раздел</label>
           <UiSelect id="q-section" v-model="form.section_id" :class="changed('section_id')">
             <option :value="null">Без раздела</option>
@@ -154,15 +164,15 @@ function save() {
       </div>
 
       <div v-if="isScale" class="grid gap-3">
-        <div class="flex flex-wrap items-end gap-3">
-          <div class="grid min-w-56 flex-1 gap-1.5">
-            <label class="text-sm font-medium" for="q-scale">Шкала</label>
+        <div class="grid gap-1.5">
+          <label class="text-sm font-medium" for="q-scale">Шкала</label>
+          <div class="grid min-w-0 items-center gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
             <UiSelect id="q-scale" v-model="form.scale_id" :class="changed('scale_id')" :invalid="scaleMissing" @update:model-value="scaleMissing = false">
               <option v-for="scale in scales" :key="scale.id" :value="scale.id">{{ scale.title }}</option>
             </UiSelect>
-            <p v-if="scaleMissing" role="alert" class="text-sm text-red-600">Выберите шкалу</p>
+            <UiButton v-if="allowCreateScale" class="justify-self-start" @click="scaleDialogOpen = true">Новая шкала</UiButton>
           </div>
-          <UiButton v-if="allowCreateScale" size="sm" @click="emit('new-scale')">Новая шкала</UiButton>
+          <p v-if="scaleMissing" role="alert" class="text-sm text-red-600">Выберите шкалу</p>
         </div>
         <div class="grid gap-2" :class="changed('ranges')">
           <p class="text-sm font-medium">Диапазоны для отчёта <span class="font-normal text-ink-muted">- например, «1–3: низкая»</span></p>
@@ -285,4 +295,7 @@ function save() {
       @cancel="emit('cancel')"
     />
   </form>
+  <UiDialog v-if="allowCreateScale" v-model:open="scaleDialogOpen" :busy="scaleSaving" title="Новая шкала">
+    <ScaleEditor v-model:saving="scaleSaving" embedded @created="onScaleCreated" @cancel="scaleDialogOpen = false" />
+  </UiDialog>
 </template>

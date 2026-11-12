@@ -199,11 +199,11 @@ onMounted(loadSync)
 
     <UiCard>
       <template #title>Новый пользователь</template>
-      <form class="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4" @submit.prevent="create">
+      <form class="grid items-end gap-3 text-sm sm:grid-cols-3 lg:grid-cols-[repeat(3,minmax(0,1fr))_auto]" @submit.prevent="create">
         <UiInput v-model="newUser.email" label="Email" type="email" required />
         <UiInput v-model="newUser.full_name" label="ФИО" />
         <UiInput v-model="newUser.password" label="Пароль (необязательно)" type="text" minlength="8" autocomplete="off" />
-        <div class="flex flex-wrap items-end gap-3">
+        <div class="flex flex-wrap items-center gap-3 sm:col-span-3 lg:col-span-1">
           <label class="flex h-10 items-center gap-2"><input v-model="newUser.is_employee" type="checkbox" class="size-4 accent-brand-600" /> Сотрудник</label>
           <label class="flex h-10 items-center gap-2"><input v-model="newUser.is_superuser" type="checkbox" class="size-4 accent-brand-600" /> Админ</label>
           <UiButton type="submit" variant="primary" :loading="creating">Создать</UiButton>
@@ -303,7 +303,7 @@ onMounted(loadSync)
             <td class="px-4 py-2">
               <form v-if="passwordFor === user.id" class="flex items-center gap-1" @submit.prevent="setPassword(user)">
                 <UiInput v-model="newPassword" minlength="8" required autocomplete="off" aria-label="Новый пароль" class="w-32" />
-                <UiButton size="sm" type="submit">OK</UiButton>
+                <UiButton type="submit">OK</UiButton>
               </form>
               <button v-else type="button" class="text-brand-700 hover:underline" @click="(passwordFor = user.id), (newPassword = '')">
                 {{ user.has_password ? 'Сменить' : 'Задать' }}
