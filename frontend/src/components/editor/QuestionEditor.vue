@@ -286,7 +286,7 @@ function save() {
     </fieldset>
 
     <p v-if="error" role="alert" class="rounded-control bg-red-100 px-3 py-2 text-sm text-red-800">{{ error }}</p>
-    <UiButton v-if="question && !answered" variant="ghost" class="justify-self-start text-red-600" :disabled="saving" @click="emit('delete')">Удалить вопрос</UiButton>
+    <UiButton v-if="question && !answered" variant="danger-outline" class="justify-self-start" :disabled="saving" @click="emit('delete')">Удалить вопрос</UiButton>
     <UiFormActions
       v-if="dirty || !question"
       :save-label="question ? 'Сохранить' : 'Добавить вопрос'"

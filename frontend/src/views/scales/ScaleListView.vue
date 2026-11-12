@@ -143,7 +143,8 @@ function numericPreview(scale) {
               </svg>
             </UiButton>
             <UiButton
-              class="size-10 p-0! text-red-700! disabled:cursor-not-allowed"
+              variant="danger-outline"
+              class="size-10 p-0! disabled:cursor-not-allowed"
               :aria-label="`Удалить шкалу ${row.title}`"
               :aria-describedby="row.can_delete ? undefined : `scale-usage-${row.id}`"
               :title="row.can_delete ? 'Удалить шкалу' : usageHint"

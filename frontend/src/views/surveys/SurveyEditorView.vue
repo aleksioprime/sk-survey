@@ -693,7 +693,7 @@ const textarea = 'rounded-control border border-line bg-surface p-3 outline-none
             <div v-if="currentSection" class="flex flex-wrap gap-1">
               <UiButton size="sm" variant="ghost" :disabled="saving || survey.sections[0]?.id === currentSection.id" aria-label="Раздел выше" @click="moveSection(currentSection, -1)">↑</UiButton>
               <UiButton size="sm" variant="ghost" :disabled="saving || survey.sections.at(-1)?.id === currentSection.id" aria-label="Раздел ниже" @click="moveSection(currentSection, 1)">↓</UiButton>
-              <UiButton size="sm" variant="ghost" class="text-red-600" :disabled="saving" @click="removeSection(currentSection)">Удалить раздел</UiButton>
+              <UiButton size="sm" variant="danger-outline" :disabled="saving" @click="removeSection(currentSection)">Удалить раздел</UiButton>
             </div>
           </div>
           <form class="grid gap-3 rounded-card border border-line bg-surface p-4 sm:p-5" @submit.prevent="saveSection">
@@ -764,7 +764,7 @@ const textarea = 'rounded-control border border-line bg-surface p-3 outline-none
         @save="saveAccess"
       />
 
-      <UiButton variant="ghost" class="justify-self-start text-red-600" :disabled="accessSaving" @click="remove">Удалить опрос</UiButton>
+      <UiButton variant="danger-outline" class="justify-self-start" :disabled="accessSaving" @click="remove">Удалить опрос</UiButton>
     </section>
 
     <UiConfirm
