@@ -1,6 +1,7 @@
 """Конструктор: права, вопросы всех типов, варианты с ответами, порядок, копия, публикации."""
 
 import pytest
+from sk_common.people.models import Person
 from sk_common.testing import login_as
 
 from tests.conftest import other_client
@@ -43,6 +44,35 @@ async def test_other_people_do_not_see_survey(db, client):
         await login_employee(db, stranger, email='other@skolkovo.example.org', last_name='Другой')
         assert (await stranger.get(f'/api/v1/surveys/{built["survey"]["id"]}')).status_code == 404
         assert (await stranger.get('/api/v1/surveys')).json() == []
+
+
+async def test_saved_editors_include_staff_without_prior_login(db, client):
+    owner = await login_employee(db, client)
+    survey = (await client.post('/api/v1/surveys', json={'title': 'Опрос'})).json()
+    url = f'/api/v1/surveys/{survey["id"]}'
+    first = Person(last_name='Первый', email='first-editor@example.org', is_employee=True)
+    second = Person(last_name='Второй', email='second-editor@example.org', is_employee=True)
+    db.add_all([first, second])
+    await db.commit()
+
+    def editor_ids(response):
+        return {member['person_id'] for member in response.json()['members'] if member['role'] == 'editor'}
+
+    assigned = await client.put(f'{url}/members', json={'editor_person_ids': [first.id]})
+    assert assigned.status_code == 200
+    assert editor_ids(assigned) == {first.id}
+
+    rejected = await client.put(f'{url}/members', json={'editor_person_ids': [owner.person_id]})
+    assert rejected.status_code == 400
+    assert 'Владелец' in rejected.json()['detail']
+    assert editor_ids(await client.get(url)) == {first.id}
+
+    updated = await client.put(f'{url}/members', json={'editor_person_ids': [first.id, second.id]})
+    assert updated.status_code == 200
+    assert editor_ids(await client.get(url)) == {first.id, second.id}
+    removed = await client.put(f'{url}/members', json={'editor_person_ids': [second.id]})
+    assert removed.status_code == 200
+    assert editor_ids(await client.get(url)) == {second.id}
 
 
 async def test_editor_can_edit_but_not_delete(db, client):
