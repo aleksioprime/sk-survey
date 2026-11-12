@@ -6,6 +6,7 @@ import PersonPicker from './PersonPicker.vue'
 const props = defineProps({
   surveyId: { type: String, required: true },
   members: { type: Array, required: true },
+  currentUserId: { type: Number, default: null },
   saving: { type: Boolean, default: false },
   error: { type: String, default: '' },
   notice: { type: String, default: '' },
@@ -23,8 +24,10 @@ const rows = computed(() => [
 ])
 const changed = computed(() => rows.value.some((row) => row.state !== 'saved'))
 const labels = { removed: 'Будет убран', added: 'Будет добавлен' }
+const isSelf = (person) => person.user_id != null && person.user_id === props.currentUserId
 
 function toggle({ person, state }) {
+  if (isSelf(person)) return
   model.value = state === 'removed'
     ? [...model.value, person]
     : model.value.filter((item) => keyFor(item) !== keyFor(person))
@@ -50,7 +53,9 @@ function toggle({ person, state }) {
           </div>
           <div class="flex flex-wrap items-center gap-2">
             <UiBadge v-if="labels[row.state]" :tone="row.state === 'removed' ? 'warning' : 'brand'">{{ labels[row.state] }}</UiBadge>
+            <UiBadge v-if="isSelf(row.person)" tone="brand" title="Себя убрать нельзя">Вы</UiBadge>
             <UiButton
+              v-else
               size="sm"
               variant="ghost"
               :disabled="saving"

@@ -76,6 +76,14 @@ async def test_any_editor_can_manage_access_and_delete(db, client):
         assert added.status_code == 200, added.text
         assert (await editor_client.patch(url, json={'title': 'Новое'})).status_code == 200
         assert (await editor_client.put(f'{url}/access', json={'members': []})).status_code == 400
+        self_removal = await editor_client.put(
+            f'{url}/access',
+            json={'members': [{'user_id': creator.id}], 'expected_user_ids': [creator.id, editor.id]},
+        )
+        assert self_removal.status_code == 400
+        assert self_removal.json()['detail'] == 'Нельзя убрать себя из редакторов опроса'
+        still_editing = (await editor_client.get(url)).json()
+        assert {member['user_id'] for member in still_editing['members']} == {creator.id, editor.id}
         stale = await editor_client.put(
             f'{url}/access', json={'members': [{'user_id': editor.id}], 'expected_user_ids': [editor.id]}
         )
@@ -108,8 +116,12 @@ async def test_admin_can_manage_access_with_an_account_outside_the_directory(db,
     assert set(by_person) == {None, employee.id}
     assert {member['role'] for member in by_person.values()} == {'editor'}
 
-    changed = await client.put(f'{url}/access', json={'members': [{'user_id': by_person[employee.id]['user_id']}]})
+    denied = await client.put(f'{url}/access', json={'members': [{'user_id': by_person[employee.id]['user_id']}]})
+    assert denied.status_code == 400
+    assert denied.json()['detail'] == 'Нельзя убрать себя из редакторов опроса'
+    changed = await client.put(f'{url}/access', json={'members': [{'user_id': admin.id}]})
     assert changed.status_code == 200, changed.text
+    assert [member['user_id'] for member in changed.json()['members']] == [admin.id]
     assert changed.json()['role'] == 'editor'
     assert (await client.get(url)).json()['role'] == 'editor'
     assert (await client.get('/api/v1/surveys')).json()[0]['role'] == 'editor'

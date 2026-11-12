@@ -454,20 +454,8 @@ async function setArchived(archived) {
   }
 }
 
-async function saveAccess(confirmed = false) {
+async function saveAccess() {
   if (accessSaving.value) return
-  const leavesEditors = !auth.isAdmin && !accessDraft.value.some((member) => member.user_id === auth.user?.id)
-  if (leavesEditors && !confirmed) {
-    discardAction.value = {
-      title: 'Убрать себя из редакторов?',
-      text: hasDraft.value
-        ? 'Вы потеряете доступ к редактированию. Несохранённые изменения будут потеряны.'
-        : 'Вы потеряете доступ к редактированию этого опроса.',
-      confirmLabel: 'Убрать себя',
-      confirm: () => saveAccess(true),
-    }
-    return
-  }
   accessSaving.value = true
   accessError.value = ''
   accessNotice.value = ''
@@ -480,13 +468,7 @@ async function saveAccess(confirmed = false) {
     survey.value.members = data.members
     survey.value.role = data.role
     resetAccessDraft(data.members)
-    if (data.role == null) {
-      discardDrafts()
-      accessSaving.value = false
-      await router.push({ name: 'surveys' })
-    } else {
-      accessNotice.value = 'Доступ сохранён'
-    }
+    accessNotice.value = 'Доступ сохранён'
   } catch (e) {
     accessError.value = errorMessage(e)
   } finally {
@@ -496,13 +478,15 @@ async function saveAccess(confirmed = false) {
 
 function requestCopy() {
   if (copying.value || saving.value || settingsSaving.value || activeSaving.value || accessSaving.value) return
-  if (hasDraft.value) {
-    discardAction.value = {
-      title: 'Сделать копию без сохранения?',
-      confirmLabel: 'Скопировать',
-      confirm: () => copy(true),
-    }
-  } else copy()
+  const discard = hasDraft.value
+  discardAction.value = {
+    title: 'Сделать копию опроса?',
+    text: discard
+      ? 'В копию попадёт сохранённая версия опроса. Несохранённые изменения будут потеряны при переходе к копии.'
+      : 'Копия будет содержать настройки, разделы и вопросы опроса.',
+    confirmLabel: 'Скопировать',
+    confirm: () => copy(discard),
+  }
 }
 
 function discardDrafts() {
@@ -773,6 +757,7 @@ const textarea = 'rounded-control border border-line bg-surface p-3 outline-none
         v-model="accessDraft"
         :survey-id="props.id"
         :members="survey.members"
+        :current-user-id="auth.user?.id ?? null"
         :saving="accessSaving || settingsSaving"
         :error="accessError"
         :notice="accessNotice"

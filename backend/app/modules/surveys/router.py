@@ -102,7 +102,7 @@ async def set_members(survey_id: int, payload: MembersIn, db: Db, user: CurrentU
 @router.put('/surveys/{survey_id}/access', response_model=SurveyAccessOut, summary='Доступ к опросу')
 async def set_survey_access(survey_id: int, payload: SurveyAccessIn, db: Db, user: CurrentUser) -> SurveyAccessOut:
     survey, _ = await editable_survey(db, survey_id, user, lock=True)
-    await service.set_survey_access(db, survey, payload.members, payload.expected_user_ids)
+    await service.set_survey_access(db, survey, payload.members, payload.expected_user_ids, actor_id=user.id)
     members = await service.survey_members_out(db, survey.id)
     record(
         db,

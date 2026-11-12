@@ -296,7 +296,12 @@ async def set_editors(db: AsyncSession, survey: Survey, person_ids: list[int], a
 
 
 async def set_survey_access(
-    db: AsyncSession, survey: Survey, access: list[MemberAccessIn], expected_user_ids: list[int] | None
+    db: AsyncSession,
+    survey: Survey,
+    access: list[MemberAccessIn],
+    expected_user_ids: list[int] | None,
+    *,
+    actor_id: int,
 ) -> None:
     if not access:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, 'У опроса должен остаться хотя бы один редактор')
@@ -316,6 +321,8 @@ async def set_survey_access(
         if user_id in members:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, 'Участнику можно назначить только одну роль')
         members[user_id] = current.get(user_id) or SurveyMember(user_id=user_id)
+    if actor_id in current and actor_id not in members:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, 'Нельзя убрать себя из редакторов опроса')
     survey.members = list(members.values())
     await db.flush()
 
