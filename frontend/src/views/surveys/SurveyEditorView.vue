@@ -1,6 +1,6 @@
 <script setup>
-import { computed, nextTick, onMounted, ref } from 'vue'
-import { RouterLink, useRouter } from 'vue-router'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { onBeforeRouteUpdate, RouterLink, useRoute, useRouter } from 'vue-router'
 import { errorMessage, SkeletonPage, UiBadge, UiButton, UiCard, UiConfirm, UiCopyField, UiInput } from 'sk-ui'
 import * as api from '@/api/surveys'
 import PersonPicker from '@/components/editor/PersonPicker.vue'
@@ -12,6 +12,7 @@ import { QUESTION_TYPES } from '@/utils/questionTypes'
 
 const props = defineProps({ id: { type: String, required: true } })
 const router = useRouter()
+const route = useRoute()
 
 const survey = ref(null)
 const scales = ref([])
@@ -100,6 +101,7 @@ function resetDraft() {
 function openQuestion(id, focus = true) {
   resetDraft()
   selected.value = id
+  sectionId.value = null
   if (focus) focusEditor()
 }
 
@@ -113,29 +115,92 @@ function openSection(section, focus = true) {
 
 function changePanel(action) {
   if (saving.value) return
-  if (questionDirty.value || sectionDirty.value) discardAction.value = action
+  if (questionDirty.value || sectionDirty.value) discardAction.value = { confirm: action }
   else action()
 }
 
-function discardAndContinue() {
+function finishDiscard(confirmed) {
   const action = discardAction.value
   discardAction.value = null
-  action?.()
+  if (confirmed) action?.confirm()
+  else action?.cancel?.()
 }
+
+function viewFromQuery(query) {
+  const nextTab = typeof query.tab === 'string' && Object.hasOwn(tabs, query.tab) ? query.tab : 'questions'
+  const question = orderedQuestions.value.find((item) => String(item.id) === query.question)
+  const section = question ? null : survey.value.sections.find((item) => String(item.id) === query.section)
+  return {
+    tab: nextTab,
+    questionId: section ? null : question?.id ?? orderedQuestions.value[0]?.id ?? null,
+    sectionId: section?.id ?? null,
+  }
+}
+
+function matchesView(view) {
+  if (tab.value !== view.tab) return false
+  if (selected.value === 'section') return view.sectionId != null && sectionId.value === view.sectionId
+  return view.sectionId == null && selected.value === view.questionId
+}
+
+function goToView(view, replace = false) {
+  const query = {
+    ...route.query,
+    tab: view.tab,
+    question: view.questionId == null ? undefined : String(view.questionId),
+    section: view.sectionId == null ? undefined : String(view.sectionId),
+  }
+  if (['tab', 'question', 'section'].every((key) => route.query[key] === query[key])) {
+    if (!replace && !matchesView(view)) changePanel(() => restoreView(true))
+    return
+  }
+  return router[replace ? 'replace' : 'push']({ query, hash: route.hash })
+}
+
+function restoreView(focus = false) {
+  const view = viewFromQuery(route.query)
+  if (!matchesView(view)) {
+    tab.value = view.tab
+    const focusQuestionTab = focus && view.tab === 'questions'
+    if (view.sectionId != null) openSection(survey.value.sections.find((section) => section.id === view.sectionId), focusQuestionTab)
+    else openQuestion(view.questionId, focusQuestionTab)
+  }
+  // Запоминаем вопрос по ID, чтобы при перестановке и перезагрузке он оставался выбранным.
+  goToView(view, true)
+}
+
+watch(() => route.query, () => {
+  if (survey.value && route.name === 'survey' && route.params.id === props.id) restoreView(true)
+})
+
+onBeforeRouteUpdate((to) => {
+  if (!survey.value) return true
+  if (to.name === 'survey' && to.params.id === props.id && matchesView(viewFromQuery(to.query))) return true
+  if (saving.value) return false
+  if (!questionDirty.value && !sectionDirty.value) return true
+  finishDiscard(false)
+  return new Promise((resolve) => {
+    discardAction.value = { confirm: () => resolve(true), cancel: () => resolve(false) }
+  })
+})
 
 function chooseQuestion(id) {
   if (selected.value === id) focusEditor()
-  else changePanel(() => openQuestion(id))
+  else goToView({ tab: 'questions', questionId: id, sectionId: null })
+}
+
+function chooseSection(section) {
+  if (selected.value === 'section' && sectionId.value === section.id) focusEditor()
+  else goToView({ tab: 'questions', questionId: null, sectionId: section.id })
 }
 
 function changeTab(key) {
-  if (tab.value === key) return
-  changePanel(() => {
-    if (selected.value === 'section') openSection(currentSection.value, false)
-    else if (selected.value === 'new') openQuestion(orderedQuestions.value[0]?.id ?? null, false)
-    else resetDraft()
-    tab.value = key
-  })
+  if (tab.value !== key) goToView({ ...viewFromQuery(route.query), tab: key })
+}
+
+function selectSavedQuestion(id, focus = true) {
+  openQuestion(id, focus)
+  goToView({ tab: tab.value, questionId: id, sectionId: null }, true)
 }
 
 function editorDraft(members) {
@@ -177,9 +242,9 @@ onMounted(async () => {
       api.surveyPublishings(props.id),
     ])
     setSurvey(data)
-    selected.value = orderedQuestions.value[0]?.id ?? null
     scales.value = scaleList
     publishings.value = publishingList
+    restoreView()
   })
 })
 
@@ -196,7 +261,7 @@ async function saveQuestion(payload, question) {
     survey.value.questions = question
       ? survey.value.questions.map((item) => item.id === saved.id ? saved : item)
       : [...survey.value.questions, saved]
-    openQuestion(saved.id, false)
+    selectSavedQuestion(saved.id, false)
     notice.value = 'Вопрос сохранён'
   } catch (e) {
     questionError.value = errorMessage(e)
@@ -215,7 +280,7 @@ async function duplicateQuestion(question) {
         options: question.options.filter((o) => o.is_active).map((o) => ({ ...o, id: null })),
       })
       survey.value.questions.push(copied)
-      openQuestion(copied.id)
+      selectSavedQuestion(copied.id)
     }, 'Копия добавлена в конец раздела')
   } finally {
     saving.value = false
@@ -231,7 +296,7 @@ function removeQuestion(question) {
         await api.deleteQuestion(question.id)
         const index = orderedQuestions.value.findIndex((item) => item.id === question.id)
         await reload()
-        openQuestion(orderedQuestions.value[index]?.id ?? orderedQuestions.value.at(-1)?.id ?? null)
+        selectSavedQuestion(orderedQuestions.value[index]?.id ?? orderedQuestions.value.at(-1)?.id ?? null)
       }),
   }
 }
@@ -247,8 +312,7 @@ function startNew(section) {
 
 function cancelQuestion() {
   if (currentQuestion.value) openQuestion(currentQuestion.value.id)
-  else if (currentSection.value) openSection(currentSection.value)
-  else openQuestion(orderedQuestions.value[0]?.id ?? null)
+  else restoreView(true)
 }
 
 async function moveQuestion(question, delta) {
@@ -300,6 +364,7 @@ async function saveSection() {
         : await api.addSection(props.id, body)
       await reload()
       openSection(section, false)
+      goToView({ tab: tab.value, questionId: null, sectionId: section.id }, true)
     }, 'Раздел сохранён')
   } finally {
     saving.value = false
@@ -314,7 +379,7 @@ function removeSection(section) {
       run(async () => {
         await api.deleteSection(section.id)
         await reload()
-        openQuestion(orderedQuestions.value[0]?.id ?? null)
+        selectSavedQuestion(orderedQuestions.value[0]?.id ?? null)
       }),
   }
 }
@@ -489,7 +554,7 @@ const textarea = 'rounded-control border border-line bg-surface p-3 outline-none
                 :class="selected === 'section' && currentSection?.id === group.section.id ? 'bg-brand-50 text-brand-700' : ''"
                 :aria-current="selected === 'section' && currentSection?.id === group.section.id ? 'true' : undefined"
                 :disabled="saving"
-                @click="changePanel(() => openSection(group.section))"
+                @click="chooseSection(group.section)"
               >
                 <span class="min-w-0 break-words">{{ group.section.title || 'Раздел без названия' }}</span>
                 <span v-if="!group.section.is_active" class="shrink-0 text-xs font-normal text-ink-muted">Скрыт</span>
@@ -691,8 +756,8 @@ const textarea = 'rounded-control border border-line bg-surface p-3 outline-none
       :open="!!discardAction"
       title="Перейти без сохранения?"
       confirm-label="Перейти"
-      @update:open="discardAction = null"
-      @confirm="discardAndContinue"
+      @update:open="finishDiscard(false)"
+      @confirm="finishDiscard(true)"
     >
       Изменения в текущем редакторе будут потеряны.
     </UiConfirm>
