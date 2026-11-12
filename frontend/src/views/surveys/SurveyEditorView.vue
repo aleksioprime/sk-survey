@@ -528,17 +528,23 @@ const textarea = 'rounded-control border border-line bg-surface p-3 outline-none
 <template>
   <div v-if="survey">
     <RouterLink :to="{ name: 'surveys' }" class="text-sm text-ink-muted hover:text-ink">← Опросы</RouterLink>
-    <div class="mt-2 flex flex-wrap items-start justify-between gap-3 sm:flex-nowrap">
+    <div class="mt-2 flex flex-wrap items-start justify-between gap-3 lg:flex-nowrap">
       <div class="flex min-w-0 flex-wrap items-center gap-3">
         <h1 class="min-w-0 text-2xl font-bold wrap-anywhere">{{ survey.title }}</h1>
         <SurveyArchiveBadge :active="survey.is_active" />
       </div>
-      <div class="flex w-full flex-wrap items-center justify-between gap-2 sm:w-auto sm:shrink-0 sm:justify-end">
+      <div class="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:shrink-0 lg:justify-end">
         <RouterLink
           :to="{ name: 'survey-preview', params: { id: props.id }, query: route.query }"
           class="inline-flex min-h-10 items-center justify-center rounded-control bg-brand-600 px-3 text-sm font-medium text-white hover:bg-brand-700"
         >
           Предпросмотр
+        </RouterLink>
+        <RouterLink
+          :to="{ name: 'survey-publishings', params: { id: props.id } }"
+          class="inline-flex min-h-10 items-center justify-center rounded-control border border-line bg-surface px-3 text-sm font-medium hover:bg-brand-50"
+        >
+          Публикации
         </RouterLink>
         <UiButton
           class="px-3! text-sm"
@@ -720,21 +726,8 @@ const textarea = 'rounded-control border border-line bg-surface p-3 outline-none
     </section>
 
     <!-- Настройки -->
-    <section v-else class="mt-6 grid max-w-3xl gap-6">
-      <UiCard class="grid gap-2 p-4">
-        <UiSwitch
-          :model-value="!survey.is_active"
-          label="В архив"
-          hint="Ссылки на публикации закрываются сразу. Собранные ответы доступны."
-          class="justify-self-start"
-          :loading="activeSaving"
-          :disabled="settingsSaving || copying"
-          @update:model-value="setArchived"
-        />
-        <p v-if="activeError" role="alert" class="rounded-control bg-red-100 px-3 py-2 text-sm text-red-800">{{ activeError }}</p>
-      </UiCard>
-
-      <form class="grid gap-4 rounded-card border border-line bg-surface p-5" @submit.prevent="saveSettings">
+    <section v-else class="mt-6 grid min-w-0 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,23rem)]">
+      <form class="grid min-w-0 gap-4 rounded-card border border-line bg-surface p-4 sm:p-5" @submit.prevent="saveSettings">
         <fieldset class="grid min-w-0 gap-4" :disabled="settingsSaving || copying || accessSaving">
           <UiInput v-model="settings.title" :class="{ 'ui-changed': settingChanged('title') }" label="Название" required />
           <UiInput v-model="settings.code" :class="{ 'ui-changed': settingChanged('code') }" label="Код" hint="Латиница, цифры, «_» и «-». Для выгрузок и поиска, необязательно." />
@@ -753,18 +746,33 @@ const textarea = 'rounded-control border border-line bg-surface p-3 outline-none
         <UiFormActions v-if="settingsDirty" :loading="settingsSaving" :disabled="activeSaving || copying || accessSaving" @cancel="cancelSettings" />
       </form>
 
-      <SurveyAccess
-        v-model="accessDraft"
-        :survey-id="props.id"
-        :members="survey.members"
-        :current-user-id="auth.user?.id ?? null"
-        :saving="accessSaving || settingsSaving"
-        :error="accessError"
-        :notice="accessNotice"
-        @save="saveAccess"
-      />
+      <aside aria-label="Управление опросом" class="grid min-w-0 gap-4">
+        <UiCard class="grid gap-2">
+          <UiSwitch
+            :model-value="!survey.is_active"
+            label="В архив"
+            hint="Ссылки на публикации закрываются сразу. Собранные ответы доступны."
+            class="justify-self-start"
+            :loading="activeSaving"
+            :disabled="settingsSaving || copying"
+            @update:model-value="setArchived"
+          />
+          <p v-if="activeError" role="alert" class="rounded-control bg-red-100 px-3 py-2 text-sm text-red-800">{{ activeError }}</p>
+        </UiCard>
 
-      <UiButton variant="danger-outline" class="justify-self-start" :disabled="accessSaving" @click="remove">Удалить опрос</UiButton>
+        <SurveyAccess
+          v-model="accessDraft"
+          :survey-id="props.id"
+          :members="survey.members"
+          :current-user-id="auth.user?.id ?? null"
+          :saving="accessSaving || settingsSaving"
+          :error="accessError"
+          :notice="accessNotice"
+          @save="saveAccess"
+        />
+
+        <UiButton variant="danger-outline" class="justify-self-start" :disabled="accessSaving" @click="remove">Удалить опрос</UiButton>
+      </aside>
     </section>
 
     <UiConfirm

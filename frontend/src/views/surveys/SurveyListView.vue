@@ -45,6 +45,10 @@ const shown = computed(() => surveys.value.filter((survey) => {
   if (status.value !== 'all' && (status.value === 'active') !== survey.is_active) return false
   if (role.value && survey.role !== role.value) return false
   return [survey.title, survey.code].some((value) => value?.toLocaleLowerCase('ru').includes(searchTerm.value))
+}).map((survey) => {
+  const title = survey.title.trimEnd()
+  const lastWord = title.search(/\S+$/)
+  return { ...survey, titleStart: title.slice(0, lastWord), titleEnd: title.slice(lastWord) }
 }))
 
 function resetFilters() {
@@ -143,23 +147,24 @@ async function create() {
         :key="survey.id"
         class="flex min-w-0 flex-col gap-3 rounded-card border border-line bg-surface p-4 lg:flex-row lg:items-center lg:justify-between"
       >
-        <div class="min-w-0">
-          <div class="flex flex-col items-start gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-            <h2 class="min-w-0 font-semibold wrap-anywhere">{{ survey.title }}</h2>
-            <div class="flex max-w-full flex-wrap gap-1.5">
-              <SurveyArchiveBadge :active="survey.is_active" />
-              <UiBadge>{{ roles[survey.role] || survey.role }}</UiBadge>
-            </div>
-          </div>
+        <div class="min-w-0 flex-1">
+          <h2 class="font-semibold wrap-anywhere">
+            <RouterLink
+              :to="{ name: canEdit(survey) ? 'survey' : 'survey-results', params: { id: survey.id } }"
+              :aria-label="survey.title"
+              :aria-describedby="survey.is_active ? `survey-role-${survey.id}` : `survey-role-${survey.id} survey-archive-${survey.id}`"
+              class="block rounded-sm text-brand-700 no-underline hover:text-brand-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+            >
+              {{ survey.titleStart }}<span class="inline-block max-w-full align-baseline">{{ survey.titleEnd }}&nbsp;<UiBadge :id="`survey-role-${survey.id}`" class="align-middle">{{ roles[survey.role] || survey.role }}</UiBadge></span>
+              <SurveyArchiveBadge :id="`survey-archive-${survey.id}`" :active="survey.is_active" class="align-middle" />
+            </RouterLink>
+          </h2>
           <p class="mt-1 text-sm text-ink-muted">
             <template v-if="canEdit(survey)">Вопросов: {{ survey.questions_count }} · </template>
             Публикаций: {{ survey.publishings_count }} · Ответов: {{ survey.responses_count }}
           </p>
         </div>
         <div class="flex shrink-0 flex-wrap gap-2">
-          <template v-if="canEdit(survey)">
-            <RouterLink :to="{ name: 'survey', params: { id: survey.id } }" :class="actionClass">Редактировать</RouterLink>
-          </template>
           <RouterLink
             v-if="canEdit(survey) || survey.publishings_count"
             :to="{ name: canEdit(survey) ? 'survey-publishings' : 'survey-results', params: { id: survey.id } }"
