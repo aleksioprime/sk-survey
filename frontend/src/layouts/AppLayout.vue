@@ -1,16 +1,18 @@
 <script setup>
 import { computed } from 'vue'
-import { RouterLink, RouterView, useRouter } from 'vue-router'
+import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import { BrandMark, OverflowNav, SchoolFooter, UiButton } from 'sk-ui'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
+const route = useRoute()
 const router = useRouter()
 
 const links = computed(() => [
-  ...(auth.canCreateSurveys ? [{ to: { name: 'surveys' }, label: 'Опросы' }] : []),
-  { to: { name: 'publishings' }, label: 'Результаты' },
-  ...(auth.isAdmin ? [{ to: { name: 'admin-people' }, label: 'Люди' }] : []),
+  { to: { name: 'surveys' }, label: 'Опросы' },
+  ...(auth.canCreateSurveys || auth.isAdmin
+    ? [{ to: { name: route.name === 'admin-people' || !auth.canCreateSurveys ? 'admin-people' : 'scales' }, label: 'Справочники' }]
+    : []),
 ])
 
 async function logout() {

@@ -51,7 +51,10 @@ const format = (value) => (value == null ? '—' : Number(value).toLocaleString(
 
 <template>
   <div>
-    <RouterLink :to="{ name: 'publishings' }" class="text-sm text-ink-muted hover:text-ink">← Результаты</RouterLink>
+    <RouterLink
+      :to="publishing ? { name: 'survey-results', params: { id: publishing.survey_id } } : { name: 'surveys' }"
+      class="text-sm text-ink-muted hover:text-ink"
+    >{{ publishing ? '← Результаты опроса' : '← Опросы' }}</RouterLink>
     <p v-if="error" role="alert" class="mt-4 rounded-control bg-red-100 px-3 py-2 text-sm text-red-800">{{ error }}</p>
 
     <template v-if="publishing && results">

@@ -171,7 +171,7 @@ onMounted(loadSync)
   <div class="grid gap-6">
     <div class="flex flex-wrap items-end justify-between gap-4">
       <div>
-        <h1 class="text-2xl font-bold">Люди</h1>
+        <h2 class="text-lg font-semibold">Люди</h2>
         <p class="mt-1 text-ink-muted">Ученики и сотрудники приходят из SkolStream, внешние участники регистрируются сами.</p>
       </div>
     </div>

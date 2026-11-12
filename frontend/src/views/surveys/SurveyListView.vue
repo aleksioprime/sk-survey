@@ -1,18 +1,50 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
-import { errorMessage, SkeletonTable, UiBadge, UiButton, UiInput } from 'sk-ui'
+import { errorMessage, SkeletonTable, UiBadge, UiButton, UiDialog, UiInput, UiSelect } from 'sk-ui'
 import { createSurvey, listSurveys } from '@/api/surveys'
+import { useAuthStore } from '@/stores/auth'
+import { useUrlQuery } from '@/utils/useUrlQuery'
 
 const router = useRouter()
+const auth = useAuthStore()
 const surveys = ref([])
 const loading = ref(true)
 const error = ref('')
 const creating = ref(false)
 const title = ref('')
 const saving = ref(false)
+const createError = ref('')
+const search = ref('')
 
-const roles = { owner: 'Владелец', editor: 'Редактор', admin: 'Администратор' }
+const roles = { owner: 'Владелец', editor: 'Редактор', admin: 'Администратор', observer: 'Наблюдатель' }
+const canEdit = (survey) => ['owner', 'editor', 'admin'].includes(survey.role)
+const actionClass = 'inline-flex min-h-9 items-center rounded-control border border-line px-3 text-sm font-medium hover:border-brand-200 hover:bg-brand-50'
+const resultsRoute = (survey) => survey.result_publication_id
+  ? { name: 'publishing', params: { id: survey.result_publication_id } }
+  : { name: 'survey-results', params: { id: survey.id } }
+const statuses = { active: 'Включённые', inactive: 'Выключенные' }
+const { route, setQuery } = useUrlQuery()
+const status = computed({
+  get: () => typeof route.query.status === 'string' && Object.hasOwn(statuses, route.query.status) ? route.query.status : '',
+  set: (value) => setQuery({ status: value || undefined }),
+})
+const role = computed({
+  get: () => typeof route.query.role === 'string' && Object.hasOwn(roles, route.query.role) ? route.query.role : '',
+  set: (value) => setQuery({ role: value || undefined }),
+})
+const searchTerm = computed(() => search.value.trim().toLocaleLowerCase('ru'))
+const filtering = computed(() => !!(searchTerm.value || status.value || role.value))
+const shown = computed(() => surveys.value.filter((survey) => {
+  if (status.value && (status.value === 'active') !== survey.is_active) return false
+  if (role.value && survey.role !== role.value) return false
+  return [survey.title, survey.code].some((value) => value?.toLocaleLowerCase('ru').includes(searchTerm.value))
+}))
+
+function resetFilters() {
+  search.value = ''
+  if (status.value || role.value) setQuery({ status: undefined, role: undefined })
+}
 
 onMounted(async () => {
   try {
@@ -24,14 +56,28 @@ onMounted(async () => {
   }
 })
 
+function openCreate() {
+  title.value = ''
+  createError.value = ''
+  creating.value = true
+}
+
 async function create() {
-  if (!title.value.trim()) return
+  if (saving.value) return
+  const name = title.value.trim()
+  if (!name) {
+    createError.value = 'Введите название опроса'
+    return
+  }
+  createError.value = ''
   saving.value = true
   try {
-    const survey = await createSurvey({ title: title.value.trim() })
+    const survey = await createSurvey({ title: name })
+    creating.value = false
     await router.push({ name: 'survey', params: { id: survey.id } })
   } catch (e) {
-    error.value = errorMessage(e)
+    if (creating.value) createError.value = errorMessage(e)
+    else error.value = errorMessage(e)
   } finally {
     saving.value = false
   }
@@ -42,39 +88,74 @@ async function create() {
   <div>
     <div class="flex flex-wrap items-center justify-between gap-3">
       <h1 class="text-2xl font-bold">Опросы</h1>
-      <UiButton v-if="!creating" variant="primary" @click="creating = true">Новый опрос</UiButton>
+      <UiButton v-if="auth.canCreateSurveys" variant="primary" @click="openCreate">Новый опрос</UiButton>
     </div>
 
-    <form v-if="creating" class="mt-6 flex flex-wrap items-end gap-3 rounded-card border border-line bg-surface p-4" @submit.prevent="create">
-      <UiInput v-model="title" class="min-w-64 flex-1" label="Название опроса" placeholder="Например, «Пульс-опрос сотрудников»" autofocus />
-      <UiButton type="submit" variant="primary" :loading="saving">Создать</UiButton>
-      <UiButton variant="ghost" @click="creating = false">Отмена</UiButton>
-    </form>
+    <UiDialog v-model:open="creating" title="Новый опрос" :busy="saving">
+      <form class="grid gap-4" @submit.prevent="create">
+        <UiInput
+          v-model="title"
+          label="Название опроса"
+          placeholder="Например, «Пульс-опрос сотрудников»"
+          maxlength="500"
+          :disabled="saving"
+          required
+          autofocus
+        />
+        <p v-if="createError" role="alert" class="rounded-control bg-red-100 px-3 py-2 text-sm text-red-800">{{ createError }}</p>
+        <div class="flex flex-wrap justify-end gap-2">
+          <UiButton variant="secondary" :disabled="saving" @click="creating = false">Отмена</UiButton>
+          <UiButton type="submit" variant="primary" :loading="saving">Создать</UiButton>
+        </div>
+      </form>
+    </UiDialog>
 
     <p v-if="error" role="alert" class="mt-4 rounded-control bg-red-100 px-3 py-2 text-sm text-red-800">{{ error }}</p>
 
+    <div v-if="surveys.length" class="mt-6 grid grid-cols-1 items-center gap-3 min-[360px]:grid-cols-2 sm:flex sm:flex-wrap">
+      <UiInput v-model="search" type="search" aria-label="Поиск опросов" placeholder="Название или код опроса" class="col-span-full min-w-0 sm:min-w-56 sm:flex-1" />
+      <UiSelect v-model="status" aria-label="Статус опроса">
+        <option value="">Все статусы</option>
+        <option v-for="(label, key) in statuses" :key="key" :value="key">{{ label }}</option>
+      </UiSelect>
+      <UiSelect v-model="role" aria-label="Роль в опросе">
+        <option value="">Все роли</option>
+        <option v-for="(label, key) in roles" :key="key" :value="key">{{ label }}</option>
+      </UiSelect>
+      <UiButton v-if="filtering" variant="ghost" class="col-span-full justify-self-start" @click="resetFilters">Сбросить</UiButton>
+    </div>
+
     <SkeletonTable v-if="loading" class="mt-6" :rows="4" />
-    <p v-else-if="!surveys.length" class="mt-10 text-center text-ink-muted">
-      Опросов пока нет. Создайте первый — добавьте вопросы и опубликуйте ссылку.
+    <p v-else-if="!error && !surveys.length" class="mt-10 text-center text-ink-muted">
+      {{ auth.canCreateSurveys ? 'Опросов пока нет. Создайте первый — добавьте вопросы и опубликуйте ссылку.' : 'Здесь появятся опросы, к которым вам откроют доступ.' }}
     </p>
-    <ul v-else class="mt-6 grid gap-3">
-      <li v-for="survey in surveys" :key="survey.id">
-        <RouterLink
-          :to="{ name: 'survey', params: { id: survey.id } }"
-          class="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-card border border-line bg-surface p-4 hover:border-brand-200"
-        >
-          <div class="min-w-0 flex-1">
-            <p class="font-semibold">{{ survey.title }}</p>
-            <p class="mt-1 text-sm text-ink-muted">
-              Вопросов: {{ survey.questions_count }} · Публикаций: {{ survey.publishings_count }} · Ответов:
-              {{ survey.responses_count }}
-            </p>
+    <p v-else-if="filtering && !shown.length" class="mt-10 text-center text-ink-muted">По этим условиям опросов нет.</p>
+    <ul v-else-if="shown.length" class="mt-4 grid gap-3">
+      <li
+        v-for="survey in shown"
+        :key="survey.id"
+        class="flex min-w-0 flex-col gap-3 rounded-card border border-line bg-surface p-4 lg:flex-row lg:items-center lg:justify-between"
+      >
+        <div class="min-w-0">
+          <div class="flex flex-col items-start gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+            <h2 class="min-w-0 font-semibold wrap-anywhere">{{ survey.title }}</h2>
+            <div class="flex max-w-full flex-wrap gap-1.5">
+              <UiBadge v-if="!survey.is_active" tone="warning">Выключен</UiBadge>
+              <UiBadge>{{ roles[survey.role] || survey.role }}</UiBadge>
+            </div>
           </div>
-          <div class="flex gap-2">
-            <UiBadge v-if="!survey.is_active" tone="warning">Выключен</UiBadge>
-            <UiBadge>{{ roles[survey.role] || survey.role }}</UiBadge>
-          </div>
-        </RouterLink>
+          <p class="mt-1 text-sm text-ink-muted">
+            <template v-if="canEdit(survey)">Вопросов: {{ survey.questions_count }} · </template>
+            Публикаций: {{ survey.publishings_count }} · Ответов: {{ survey.responses_count }}
+          </p>
+        </div>
+        <div class="flex shrink-0 flex-wrap gap-2">
+          <template v-if="canEdit(survey)">
+            <RouterLink :to="{ name: 'survey', params: { id: survey.id } }" :class="actionClass">Редактировать</RouterLink>
+            <RouterLink :to="{ name: 'survey-publishings', params: { id: survey.id } }" :class="actionClass">Публикации</RouterLink>
+          </template>
+          <RouterLink v-if="survey.publishings_count" :to="resultsRoute(survey)" :class="actionClass">Результаты</RouterLink>
+        </div>
       </li>
     </ul>
   </div>
