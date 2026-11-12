@@ -57,6 +57,11 @@ class ScaleIn(BaseModel):
         return self
 
 
+class ScaleSurveyUsage(BaseModel):
+    id: int
+    title: str
+
+
 class ScaleOut(ORMModel):
     id: int
     title: str
@@ -66,6 +71,7 @@ class ScaleOut(ORMModel):
     max_value: int
     step: int
     items: list[ScaleItemOut]
+    used_in: list[ScaleSurveyUsage] = []
 
 
 # --- Вопросы --------------------------------------------------------------------------------
@@ -234,6 +240,7 @@ class SurveyListItem(ORMModel):
     updated_at: datetime
     questions_count: int = 0
     publishings_count: int = 0
+    result_publication_id: int | None = None
     responses_count: int = 0
     role: str | None = None
 
@@ -269,6 +276,27 @@ class OrderIn(BaseModel):
 
 class MembersIn(BaseModel):
     editor_person_ids: list[int] = Field(default=[], description='Персоны-редакторы (сотрудники из справочника)')
+
+
+class MemberAccessIn(BaseModel):
+    role: Literal['owner', 'editor']
+    user_id: int | None = None
+    person_id: int | None = None
+
+    @model_validator(mode='after')
+    def check_identity(self):
+        if (self.user_id is None) == (self.person_id is None):
+            raise ValueError('Укажите user_id действующего участника или person_id сотрудника из справочника')
+        return self
+
+
+class SurveyAccessIn(BaseModel):
+    members: list[MemberAccessIn]
+
+
+class SurveyAccessOut(BaseModel):
+    members: list[MemberOut]
+    role: str | None
 
 
 # --- Публикации -----------------------------------------------------------------------------

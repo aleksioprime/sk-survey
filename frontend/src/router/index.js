@@ -28,23 +28,32 @@ export const routes = [
         path: 'surveys',
         name: 'surveys',
         component: () => import('@/views/surveys/SurveyListView.vue'),
-        meta: { creator: true },
       },
       {
         path: 'surveys/:id',
         name: 'survey',
         component: () => import('@/views/surveys/SurveyEditorView.vue'),
         props: true,
-        meta: { creator: true },
+      },
+      {
+        path: 'surveys/:id/publishings',
+        name: 'survey-publishings',
+        component: () => import('@/views/publishings/SurveyPublishingsView.vue'),
+        props: true,
+      },
+      {
+        path: 'surveys/:id/results',
+        name: 'survey-results',
+        component: () => import('@/views/publishings/PublishingListView.vue'),
+        props: true,
       },
       {
         path: 'surveys/:id/preview',
         name: 'survey-preview',
         component: () => import('@/views/public/SurveyPassView.vue'),
         props: (route) => ({ token: route.params.id, preview: true }),
-        meta: { creator: true },
       },
-      { path: 'publishings', name: 'publishings', component: () => import('@/views/publishings/PublishingListView.vue') },
+      { path: 'publishings', redirect: { name: 'surveys' } },
       {
         path: 'publishings/:id',
         name: 'publishing',
@@ -53,11 +62,25 @@ export const routes = [
       },
       { path: 'profile', name: 'profile', component: () => import('@/views/profile/ProfileView.vue') },
       {
-        path: 'admin/people',
-        name: 'admin-people',
-        component: () => import('@/views/admin/PeopleView.vue'),
-        meta: { admin: true },
+        path: 'directories',
+        component: () => import('@/layouts/DirectoriesLayout.vue'),
+        children: [
+          {
+            path: '',
+            alias: 'scales',
+            name: 'scales',
+            component: () => import('@/views/scales/ScaleListView.vue'),
+            meta: { creator: true },
+          },
+          {
+            path: 'people',
+            name: 'admin-people',
+            component: () => import('@/views/admin/PeopleView.vue'),
+            meta: { admin: true },
+          },
+        ],
       },
+      { path: 'admin/people', redirect: { name: 'admin-people' } },
     ],
   },
   { path: '/:pathMatch(.*)*', redirect: { name: 'home' } },
@@ -72,9 +95,16 @@ export const router = createRouter({
 export function resolveAccess(to, auth) {
   if (to.meta.public) return true
   if (!auth.isAuthenticated) return { name: 'login', query: { next: to.fullPath } }
-  if (to.name === 'home') return { name: auth.canCreateSurveys ? 'surveys' : 'publishings' }
-  if (to.meta.creator && !auth.canCreateSurveys) return { name: 'publishings' }
-  if (to.meta.admin && !auth.isAdmin) return { name: 'home' }
+  if (to.name === 'home' || (to.meta.creator && !auth.canCreateSurveys) || (to.meta.admin && !auth.isAdmin)) {
+    return { name: 'surveys' }
+  }
+  if (to.name === 'survey' && to.query?.tab === 'publishings') {
+    const query = { ...to.query }
+    delete query.tab
+    delete query.question
+    delete query.section
+    return { name: 'survey-publishings', params: to.params, query, hash: to.hash, replace: true }
+  }
   return true
 }
 

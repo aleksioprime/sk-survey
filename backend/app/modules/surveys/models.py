@@ -111,7 +111,7 @@ class Survey(IdMixin, TimestampMixin, Base):
 
 
 class SurveyMember(Base):
-    """Кто ведёт опрос: владелец (создатель) и редакторы."""
+    """Владельцы и редакторы опроса. Создатель изначально получает роль владельца."""
 
     __tablename__ = 'survey_members'
 

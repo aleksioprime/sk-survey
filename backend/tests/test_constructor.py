@@ -87,6 +87,67 @@ async def test_editor_can_edit_but_not_delete(db, client):
         assert (await editor_client.delete(f'/api/v1/surveys/{sid}')).status_code == 403
 
 
+async def test_owner_can_transfer_ownership_to_an_editor(db, client):
+    owner = await login_employee(db, client)
+    survey = (await client.post('/api/v1/surveys', json={'title': 'Опрос'})).json()
+    url = f'/api/v1/surveys/{survey["id"]}'
+    async with other_client(client) as editor_client:
+        editor = await login_employee(db, editor_client, email='editor@example.org')
+        response = await client.put(f'{url}/members', json={'editor_person_ids': [editor.person_id]})
+        assert response.status_code == 200
+
+        owner_as_editor = {'user_id': owner.id, 'role': 'editor'}
+        editor_as_owner = {'user_id': editor.id, 'role': 'owner'}
+        transfer = {'members': [owner_as_editor, editor_as_owner]}
+        assert (await editor_client.put(f'{url}/access', json=transfer)).status_code == 403
+        assert (await client.put(f'{url}/access', json={'members': [owner_as_editor]})).status_code == 400
+        assert (await client.get(url)).json()['role'] == 'owner'
+
+        transferred = await client.put(f'{url}/access', json=transfer)
+        assert transferred.status_code == 200, transferred.text
+        assert transferred.json()['role'] == 'editor'
+        assert (await client.delete(url)).status_code == 403
+        assert (await client.put(f'{url}/access', json=transfer)).status_code == 403
+        assert (await editor_client.get(url)).json()['role'] == 'owner'
+
+        removed = await editor_client.put(f'{url}/access', json={'members': [editor_as_owner]})
+        assert removed.status_code == 200, removed.text
+        assert (await client.get(url)).status_code == 404
+        assert (await editor_client.delete(url)).status_code == 204
+
+
+async def test_admin_can_manage_access_with_an_account_outside_the_directory(db, client):
+    admin = await login_as(db, client, is_superuser=True)
+    admin.person = None
+    employee = Person(last_name='Сотрудник', email='employee@example.org', is_employee=True)
+    db.add(employee)
+    await db.commit()
+
+    survey = (await client.post('/api/v1/surveys', json={'title': 'Опрос'})).json()
+    url = f'/api/v1/surveys/{survey["id"]}'
+    members = [{'user_id': admin.id, 'role': 'owner'}, {'person_id': employee.id, 'role': 'owner'}]
+    shared = await client.put(f'{url}/access', json={'members': members})
+    assert shared.status_code == 200, shared.text
+    by_person = {member['person_id']: member for member in shared.json()['members']}
+    assert set(by_person) == {None, employee.id}
+    assert {member['role'] for member in by_person.values()} == {'owner'}
+
+    changed = await client.put(
+        f'{url}/access',
+        json={
+            'members': [
+                {'user_id': admin.id, 'role': 'editor'},
+                {'user_id': by_person[employee.id]['user_id'], 'role': 'owner'},
+            ]
+        },
+    )
+    assert changed.status_code == 200, changed.text
+    assert changed.json()['role'] == 'admin'
+    assert (await client.get(url)).json()['role'] == 'admin'
+    assert (await client.get('/api/v1/surveys')).json()[0]['role'] == 'admin'
+    assert (await client.delete(url)).status_code == 204
+
+
 async def test_answered_options_are_kept_inactive(db, client):
     await login_employee(db, client)
     built = await build_survey(client)
@@ -159,6 +220,12 @@ async def test_cannot_delete_survey_with_answers(db, client):
 async def test_observers_from_directory(db, client):
     await login_employee(db, client)
     built = await build_survey(client)
+    survey_id = built['survey']['id']
+    publication_id = built['publishing']['id']
+    before = (await client.get('/api/v1/surveys')).json()
+    assert before[0]['result_publication_id'] == publication_id
+    other = await client.post(f'/api/v1/surveys/{survey_id}/publishings', json={'title': 'Другая публикация'})
+    assert other.status_code == 201
     async with other_client(client) as observer_client:
         observer = await login_employee(db, observer_client, email='head@skolkovo.example.org', last_name='Завучева')
         found = (await client.get('/api/v1/directory/employees', params={'q': 'завуч'})).json()
@@ -170,7 +237,33 @@ async def test_observers_from_directory(db, client):
 
         cabinet = (await observer_client.get('/api/v1/publishings')).json()
         assert [p['id'] for p in cabinet] == [built['publishing']['id']] and cabinet[0]['can_edit'] is False
+        assert (await observer_client.get('/api/v1/surveys')).json() == []
+        catalog = (await observer_client.get('/api/v1/surveys', params={'include_observed': True})).json()
+        assert len(catalog) == 1
+        assert catalog[0]['id'] == survey_id and catalog[0]['role'] == 'observer'
+        assert catalog[0]['publishings_count'] == 1 and catalog[0]['result_publication_id'] == publication_id
+        assert catalog[0]['questions_count'] == 0 and catalog[0]['code'] is None
+        results = (await observer_client.get('/api/v1/publishings', params={'survey_id': survey_id})).json()
+        assert [p['id'] for p in results] == [publication_id]
+        assert (await observer_client.get(f'/api/v1/surveys/{survey_id}/publishings')).status_code == 404
         assert (await observer_client.get(f'/api/v1/surveys/{built["survey"]["id"]}')).status_code == 404
         assert (
             await observer_client.patch(f'/api/v1/publishings/{built["publishing"]["id"]}', json={'title': 'X'})
         ).status_code == 404
+    own_catalog = (await client.get('/api/v1/surveys', params={'include_observed': True})).json()
+    assert own_catalog[0]['publishings_count'] == 2 and own_catalog[0]['result_publication_id'] is None
+
+
+async def test_scale_usage_is_limited_to_surveys_the_user_can_edit(db, client):
+    await login_employee(db, client)
+    built = await build_survey(client)
+    survey = built['survey']
+    scale_id = built['questions']['scale']['scale_id']
+    scales = (await client.get('/api/v1/scales', params={'include_usage': True})).json()
+    assert next(scale for scale in scales if scale['id'] == scale_id)['used_in'] == [
+        {'id': survey['id'], 'title': survey['title']}
+    ]
+    async with other_client(client) as stranger:
+        await login_employee(db, stranger, email='other-scales@example.org', last_name='Другой')
+        visible = (await stranger.get('/api/v1/scales', params={'include_usage': True})).json()
+        assert next(scale for scale in visible if scale['id'] == scale_id)['used_in'] == []

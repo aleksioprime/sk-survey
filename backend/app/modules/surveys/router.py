@@ -24,6 +24,8 @@ from app.modules.surveys.schemas import (
     ScaleOut,
     SectionIn,
     SectionOut,
+    SurveyAccessIn,
+    SurveyAccessOut,
     SurveyIn,
     SurveyListItem,
     SurveyOut,
@@ -42,8 +44,8 @@ def _require_creator(user) -> None:
 
 
 @router.get('/surveys', response_model=list[SurveyListItem], summary='Мои опросы')
-async def list_surveys(db: Db, user: CurrentUser) -> list[SurveyListItem]:
-    return await service.list_surveys(db, user)
+async def list_surveys(db: Db, user: CurrentUser, include_observed: bool = False) -> list[SurveyListItem]:
+    return await service.list_surveys(db, user, include_observed=include_observed)
 
 
 @router.post('/surveys', response_model=SurveyOut, status_code=201, summary='Создать опрос')
@@ -72,7 +74,7 @@ async def update_survey(survey_id: int, payload: SurveyPatch, db: Db, user: Curr
 
 @router.delete('/surveys/{survey_id}', status_code=204, summary='Удалить опрос без ответов')
 async def delete_survey(survey_id: int, db: Db, user: CurrentUser) -> Response:
-    survey, role = await editable_survey(db, survey_id, user)
+    survey, role = await editable_survey(db, survey_id, user, lock=True)
     require_owner(role)
     await service.delete_survey(db, survey)
     record(db, 'survey.delete', 'survey', survey_id, user.id)
@@ -92,12 +94,31 @@ async def copy_survey(survey_id: int, db: Db, user: CurrentUser) -> SurveyOut:
 
 @router.put('/surveys/{survey_id}/members', response_model=SurveyOut, summary='Редакторы опроса')
 async def set_members(survey_id: int, payload: MembersIn, db: Db, user: CurrentUser) -> SurveyOut:
-    survey, role = await editable_survey(db, survey_id, user)
+    survey, role = await editable_survey(db, survey_id, user, lock=True)
     require_owner(role)
     await service.set_editors(db, survey, payload.editor_person_ids)
     record(db, 'survey.members', 'survey', survey.id, user.id, editors=payload.editor_person_ids)
     await db.commit()
     return await service.survey_out(db, survey, role)
+
+
+@router.put('/surveys/{survey_id}/access', response_model=SurveyAccessOut, summary='Доступ к опросу')
+async def set_survey_access(survey_id: int, payload: SurveyAccessIn, db: Db, user: CurrentUser) -> SurveyAccessOut:
+    survey, role = await editable_survey(db, survey_id, user, lock=True)
+    require_owner(role)
+    await service.set_survey_access(db, survey, payload.members)
+    members = await service.survey_members_out(db, survey.id)
+    record(
+        db,
+        'survey.access',
+        'survey',
+        survey.id,
+        user.id,
+        members=[{'user_id': member.user_id, 'role': member.role} for member in members],
+    )
+    role = await survey_role(db, survey.id, user)
+    await db.commit()
+    return SurveyAccessOut(members=members, role=role)
 
 
 @router.put('/surveys/{survey_id}/order', response_model=SurveyOut, summary='Порядок разделов и вопросов')
@@ -173,9 +194,16 @@ async def delete_question(question_id: int, db: Db, user: CurrentUser) -> Respon
 
 
 @router.get('/scales', response_model=list[ScaleOut], summary='Шкалы')
-async def list_scales(db: Db, user: CurrentUser) -> list[Scale]:
-    _require_creator(user)
-    return list(await db.scalars(select(Scale).order_by(Scale.title)))
+async def list_scales(
+    db: Db, user: CurrentUser, include_usage: bool = False, survey_id: int | None = None
+) -> list[ScaleOut]:
+    if include_usage or survey_id is None:
+        _require_creator(user)
+    else:
+        await editable_survey(db, survey_id, user)
+    scales = await db.scalars(select(Scale).order_by(Scale.title))
+    usage = await service.scale_usage(db, user) if include_usage else {}
+    return [ScaleOut.model_validate(scale).model_copy(update={'used_in': usage.get(scale.id, [])}) for scale in scales]
 
 
 @router.post('/scales', response_model=ScaleOut, status_code=201, summary='Создать шкалу')
@@ -205,8 +233,8 @@ async def update_scale(scale_id: int, payload: ScaleIn, db: Db, user: CurrentUse
 
 
 @router.get('/publishings', response_model=list[PublishingOut], summary='Публикации в кабинете')
-async def cabinet_publishings(db: Db, user: CurrentUser) -> list[PublishingOut]:
-    return await service.cabinet_publishings(db, user)
+async def cabinet_publishings(db: Db, user: CurrentUser, survey_id: int | None = None) -> list[PublishingOut]:
+    return await service.cabinet_publishings(db, user, survey_id)
 
 
 @router.get('/surveys/{survey_id}/publishings', response_model=list[PublishingOut], summary='Публикации опроса')

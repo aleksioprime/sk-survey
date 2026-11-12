@@ -8,6 +8,7 @@ const props = defineProps({
   question: { type: Object, default: null }, // null — новый вопрос
   sections: { type: Array, default: () => [] },
   scales: { type: Array, default: () => [] },
+  allowCreateScale: { type: Boolean, default: true },
   sectionId: { type: [Number, String], default: null },
   saving: { type: Boolean, default: false },
   error: { type: String, default: '' },
@@ -155,7 +156,7 @@ function save() {
           </UiSelect>
           <p v-if="scaleMissing" role="alert" class="text-sm text-red-600">Выберите шкалу</p>
         </div>
-        <UiButton size="sm" @click="emit('new-scale')">Новая шкала</UiButton>
+        <UiButton v-if="allowCreateScale" size="sm" @click="emit('new-scale')">Новая шкала</UiButton>
       </div>
       <div class="grid gap-2">
         <p class="text-sm font-medium">Диапазоны для отчёта <span class="font-normal text-ink-muted">— например, «1–3: низкая»</span></p>
