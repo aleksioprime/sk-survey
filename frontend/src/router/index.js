@@ -37,6 +37,13 @@ export const routes = [
         props: true,
         meta: { creator: true },
       },
+      {
+        path: 'surveys/:id/preview',
+        name: 'survey-preview',
+        component: () => import('@/views/public/SurveyPassView.vue'),
+        props: (route) => ({ token: route.params.id, preview: true }),
+        meta: { creator: true },
+      },
       { path: 'publishings', name: 'publishings', component: () => import('@/views/publishings/PublishingListView.vue') },
       {
         path: 'publishings/:id',

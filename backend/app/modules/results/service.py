@@ -14,7 +14,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.responses.models import STATUS_SUBMITTED, Answer, Response
 from app.modules.results.schemas import (
+    ChoiceBreakdown,
     DistributionItem,
+    MatrixRowResult,
     OptionStat,
     PublishingResults,
     QuestionResult,
@@ -22,7 +24,7 @@ from app.modules.results.schemas import (
     RankingStat,
     TextAnswer,
 )
-from app.modules.surveys.models import SCALE_GENERATED, Publishing, Question, Scale
+from app.modules.surveys.models import MATRIX_TYPES, SCALE_GENERATED, Publishing, Question, Scale
 
 CHOICE = ('single_choice', 'multiple_choice')
 NUMERIC = ('number', 'scale')
@@ -83,14 +85,30 @@ def summarize(data: Dataset) -> PublishingResults:
         )
         kind = question.question_type
         given = [a for a in answers if not a.is_skipped]
-        if kind == 'single_choice':
-            counts = Counter(a.option_id for a in given if a.option_id)
-            result.answered = sum(counts.values())
-            result.options = _option_stats(question, counts, result.answered)
-        elif kind == 'multiple_choice':
-            counts = Counter(oid for a in given for oid in a.option_ids)
-            result.answered = sum(1 for a in given if a.option_ids)
-            result.options = _option_stats(question, counts, result.answered)
+        if kind in CHOICE:
+            selections = (
+                [[a.option_id] for a in given if a.option_id]
+                if kind == 'single_choice'
+                else [a.option_ids for a in given if a.option_ids]
+            )
+            result.answered = len(selections)
+            breakdown = _choice_breakdown(question, selections)
+            result.options = breakdown.options
+            if breakdown.excluded:
+                result.comparison = breakdown
+        elif kind in MATRIX_TYPES:
+            result.answered = sum(bool(a.matrix_choices) for a in given)
+            for row in question.matrix_rows:
+                row_id = row['id']
+                selections = [a.matrix_choices[row_id] for a in given if row_id in a.matrix_choices]
+                result.matrix_rows.append(
+                    MatrixRowResult(
+                        row_id=row_id,
+                        title=row['title'],
+                        answered=len(selections),
+                        **_choice_breakdown(question, selections).model_dump(),
+                    )
+                )
         elif kind == 'yes_no':
             values = [a.boolean_value for a in given if a.boolean_value is not None]
             result.answered = len(values)
@@ -127,12 +145,24 @@ def summarize(data: Dataset) -> PublishingResults:
     )
 
 
-def _option_stats(question: Question, counts: Counter, total: int) -> list[OptionStat]:
-    return [
-        OptionStat(id=o.id, title=o.title, count=counts.get(o.id, 0), percent=_percent(counts.get(o.id, 0), total))
-        for o in question.options
-        if o.is_active or counts.get(o.id)
-    ]
+def _choice_breakdown(question: Question, selections: list[list[int]]) -> ChoiceBreakdown:
+    excluded = {o.id for o in question.options if o.exclude_from_base}
+    counts = Counter(option_id for selected in selections for option_id in selected)
+    result = ChoiceBreakdown(base=sum(bool(set(selected) - excluded) for selected in selections))
+    for option in question.options:
+        count = counts[option.id]
+        if not option.is_active and not count:
+            continue
+        separate = option.id in excluded
+        denominator = len(selections) if separate else result.base
+        stat = OptionStat(
+            id=option.id,
+            title=option.title,
+            count=count,
+            percent=_percent(count, denominator),
+        )
+        (result.excluded if separate else result.options).append(stat)
+    return result
 
 
 def _numeric(result: QuestionResult, question: Question, values: list[float], scale: Scale | None) -> None:
@@ -211,38 +241,61 @@ def export_xlsx(data: Dataset) -> bytes:
     sheet = book.active
     sheet.title = 'Ответы'
     personal = not data.publishing.is_anonymous
-    header = ['№', 'Отправлен']
+    header = ['№']
     if personal:
-        header += ['ФИО', 'Email', 'Класс']
-    header += [q.text for q in data.questions]
+        header += ['Отправлен', 'ФИО', 'Email', 'Класс']
+    for question in data.questions:
+        if question.question_type in MATRIX_TYPES:
+            header.extend(f"{question.text} / {row['title']}" for row in question.matrix_rows)
+        else:
+            header.append(question.text)
     sheet.append(header)
     for number, response in enumerate(data.responses, 1):
         by_question = {a.question_id: a for a in response.answers}
-        row = [number, response.submitted_at.astimezone().replace(tzinfo=None) if response.submitted_at else None]
+        row = [number]
         if personal:
             user = data.users.get(response.user_id)
             person = user.person if user else None
             row += [
+                response.submitted_at.astimezone().replace(tzinfo=None) if response.submitted_at else None,
                 person.full_name if person else '',
                 user.email if user else '',
                 person.study_class.name if person and person.study_class else '',
             ]
-        row += [answer_text(q, by_question.get(q.id), data.scales.get(q.scale_id)) for q in data.questions]
+        for question in data.questions:
+            answer = by_question.get(question.id)
+            if question.question_type in MATRIX_TYPES:
+                choices = answer.matrix_choices if answer else {}
+                titles = {option.id: option.title for option in question.options}
+                row.extend(
+                    'Пропущен'
+                    if answer and answer.is_skipped
+                    else '; '.join(titles[oid] for oid in choices.get(item['id'], []) if oid in titles)
+                    for item in question.matrix_rows
+                )
+            else:
+                row.append(answer_text(question, answer, data.scales.get(question.scale_id)))
         sheet.append(row)
     for cell in sheet[1]:
         cell.font = Font(bold=True)
         cell.alignment = Alignment(wrap_text=True, vertical='top')
     for index in range(1, len(header) + 1):
         sheet.column_dimensions[get_column_letter(index)].width = 14 if index <= 2 else 32
-    sheet.freeze_panes = 'C2'
+    sheet.freeze_panes = 'C2' if personal else 'B2'
 
     summary = book.create_sheet('Сводка')
-    summary.append(['Вопрос', 'Ответ', 'Количество', '%'])
+    summary.append(['Вопрос / строка матрицы', 'Ответ', 'Количество', '%', 'База', 'От чего рассчитан %'])
     for result in summarize(data).questions:
         summary.append([result.text])
         summary.cell(summary.max_row, 1).font = Font(bold=True)
-        for option in result.options:
-            summary.append(['', option.title, option.count, option.percent])
+        if result.comparison:
+            _export_choices(summary, result.comparison, result.answered)
+        else:
+            for option in result.options:
+                summary.append(['', option.title, option.count, option.percent])
+        for row in result.matrix_rows:
+            summary.append([row.title])
+            _export_choices(summary, row, row.answered)
         for item in result.ranking:
             summary.append(['', f'{item.title} — средняя позиция', item.average_rank, None])
         for item in result.ranges:
@@ -252,6 +305,21 @@ def export_xlsx(data: Dataset) -> bytes:
     summary.column_dimensions['A'].width = 60
     summary.column_dimensions['B'].width = 40
 
+    summary.column_dimensions['F'].width = 32
+    for worksheet in book:
+        for cells in worksheet.iter_rows():
+            for cell in cells:
+                if cell.data_type == 'f':
+                    cell.data_type = 's'
     buffer = BytesIO()
     book.save(buffer)
     return buffer.getvalue()
+
+
+def _export_choices(sheet, breakdown: ChoiceBreakdown, answered: int) -> None:
+    for option in breakdown.options:
+        percent = option.percent if breakdown.base else None
+        summary_base = 'Сравнимые ответы' if breakdown.excluded else 'Ответившие'
+        sheet.append(['', option.title, option.count, percent, breakdown.base, summary_base])
+    for option in breakdown.excluded:
+        sheet.append(['', option.title, option.count, option.percent if answered else None, answered, 'Все ответившие'])

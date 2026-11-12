@@ -1,11 +1,12 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { errorMessage, SkeletonPage, UiBadge, UiButton, UiCard, UiConfirm, UiCopyField, UiInput } from 'sk-ui'
 import * as api from '@/api/surveys'
 import PersonPicker from '@/components/editor/PersonPicker.vue'
 import QuestionEditor from '@/components/editor/QuestionEditor.vue'
 import ScaleEditor from '@/components/editor/ScaleEditor.vue'
+import QuestionTypeIcon from '@/components/questions/QuestionTypeIcon.vue'
 import { QUESTION_TYPES } from '@/utils/questionTypes'
 
 const props = defineProps({ id: { type: String, required: true } })
@@ -19,11 +20,17 @@ const error = ref('')
 const notice = ref('')
 
 // Конструктор
-const editing = ref(null) // id вопроса | 'new:<sectionId|none>'
+const selected = ref(null) // id вопроса, 'new', 'section'
+const sectionId = ref(null)
+const outlineOpen = ref(false)
+const editorHeading = ref(null)
+const editorVersion = ref(0)
+const questionDirty = ref(false)
+const discardAction = ref(null)
 const questionError = ref('')
 const saving = ref(false)
 const scaleForm = ref(false)
-const sectionDraft = ref(null) // { id?, title, description }
+const sectionDraft = ref(null)
 
 // Подтверждение удаления
 const removal = ref(null) // { title, text, action }
@@ -60,6 +67,74 @@ const groups = computed(() => {
   ]
 })
 
+const orderedQuestions = computed(() => groups.value.flatMap((group) => group.questions))
+const currentQuestion = computed(() => orderedQuestions.value.find((q) => q.id === selected.value))
+const currentGroup = computed(() => groups.value.find((group) => (
+  currentQuestion.value ? group.questions.includes(currentQuestion.value) : (group.section?.id ?? null) === sectionId.value
+)))
+const currentSection = computed(() => currentGroup.value?.section)
+const questionIndex = computed(() => currentGroup.value?.questions.indexOf(currentQuestion.value) ?? -1)
+const position = computed(() => orderedQuestions.value.indexOf(currentQuestion.value) + 1)
+const sectionDirty = computed(() => sectionDraft.value && (
+  sectionDraft.value.title !== (currentSection.value?.title || '')
+  || sectionDraft.value.description !== (currentSection.value?.description || '')
+))
+
+async function focusEditor() {
+  outlineOpen.value = false
+  await nextTick()
+  editorHeading.value?.focus()
+}
+
+function resetDraft() {
+  questionDirty.value = false
+  questionError.value = ''
+  scaleForm.value = false
+  sectionDraft.value = null
+  editorVersion.value += 1
+}
+
+function openQuestion(id, focus = true) {
+  resetDraft()
+  selected.value = id
+  if (focus) focusEditor()
+}
+
+function openSection(section, focus = true) {
+  resetDraft()
+  selected.value = 'section'
+  sectionId.value = section?.id ?? null
+  sectionDraft.value = { title: section?.title || '', description: section?.description || '' }
+  if (focus) focusEditor()
+}
+
+function changePanel(action) {
+  if (saving.value) return
+  if (questionDirty.value || sectionDirty.value) discardAction.value = action
+  else action()
+}
+
+function discardAndContinue() {
+  const action = discardAction.value
+  discardAction.value = null
+  action?.()
+}
+
+function chooseQuestion(id) {
+  if (selected.value === id) focusEditor()
+  else changePanel(() => openQuestion(id))
+}
+
+function changeTab(key) {
+  if (tab.value === key) return
+  changePanel(() => {
+    if (selected.value === 'section') openSection(currentSection.value, false)
+    else if (selected.value === 'new') openQuestion(orderedQuestions.value[0]?.id ?? null, false)
+    else resetDraft()
+    tab.value = key
+  })
+}
+
 function setSurvey(data) {
   survey.value = data
   settings.value = {
@@ -95,6 +170,7 @@ onMounted(async () => {
       api.surveyPublishings(props.id),
     ])
     setSurvey(data)
+    selected.value = orderedQuestions.value[0]?.id ?? null
     scales.value = scaleList
     publishings.value = publishingList
   })
@@ -107,13 +183,33 @@ const reload = async () => setSurvey(await api.getSurvey(props.id))
 async function saveQuestion(payload, question) {
   saving.value = true
   questionError.value = ''
+  notice.value = ''
   try {
-    if (question) await api.updateQuestion(question.id, payload)
-    else await api.addQuestion(props.id, payload)
-    editing.value = null
-    await reload()
+    const saved = question ? await api.updateQuestion(question.id, payload) : await api.addQuestion(props.id, payload)
+    survey.value.questions = question
+      ? survey.value.questions.map((item) => item.id === saved.id ? saved : item)
+      : [...survey.value.questions, saved]
+    openQuestion(saved.id, false)
+    notice.value = 'Вопрос сохранён'
   } catch (e) {
     questionError.value = errorMessage(e)
+  } finally {
+    saving.value = false
+  }
+}
+
+async function duplicateQuestion(question) {
+  saving.value = true
+  try {
+    await run(async () => {
+      const copied = await api.addQuestion(props.id, {
+        ...question,
+        text: question.text.length <= 4992 ? `${question.text} (копия)` : question.text,
+        options: question.options.filter((o) => o.is_active).map((o) => ({ ...o, id: null })),
+      })
+      survey.value.questions.push(copied)
+      openQuestion(copied.id)
+    }, 'Копия добавлена в конец раздела')
   } finally {
     saving.value = false
   }
@@ -126,20 +222,26 @@ function removeQuestion(question) {
     action: () =>
       run(async () => {
         await api.deleteQuestion(question.id)
-        editing.value = null
+        const index = orderedQuestions.value.findIndex((item) => item.id === question.id)
         await reload()
+        openQuestion(orderedQuestions.value[index]?.id ?? orderedQuestions.value.at(-1)?.id ?? null)
       }),
   }
 }
 
 function startNew(section) {
-  questionError.value = ''
-  editing.value = `new:${section?.id ?? 'none'}`
+  changePanel(() => {
+    resetDraft()
+    sectionId.value = section?.id ?? null
+    selected.value = 'new'
+    focusEditor()
+  })
 }
 
-function newSectionId(key) {
-  const raw = key.split(':')[1]
-  return raw === 'none' ? null : Number(raw)
+function cancelQuestion() {
+  if (currentQuestion.value) openQuestion(currentQuestion.value.id)
+  else if (currentSection.value) openSection(currentSection.value)
+  else openQuestion(orderedQuestions.value[0]?.id ?? null)
 }
 
 async function moveQuestion(question, delta) {
@@ -164,25 +266,36 @@ async function moveSection(section, delta) {
 }
 
 async function saveOrder(sectionIds, questions) {
-  await run(async () => {
-    setSurvey(
-      await api.reorder(props.id, {
-        sections: sectionIds,
-        questions: questions.map((q) => ({ id: q.id, section_id: q.section_id })),
-      }),
-    )
-  })
+  saving.value = true
+  try {
+    await run(async () => {
+      setSurvey(
+        await api.reorder(props.id, {
+          sections: sectionIds,
+          questions: questions.map((q) => ({ id: q.id, section_id: q.section_id })),
+        }),
+      )
+    })
+  } finally {
+    saving.value = false
+  }
 }
 
 async function saveSection() {
   const draft = sectionDraft.value
-  await run(async () => {
-    const body = { title: draft.title.trim(), description: draft.description.trim() }
-    if (draft.id) await api.updateSection(draft.id, body)
-    else await api.addSection(props.id, body)
-    sectionDraft.value = null
-    await reload()
-  })
+  saving.value = true
+  try {
+    await run(async () => {
+      const body = { title: draft.title.trim(), description: draft.description.trim(), is_active: currentSection.value?.is_active ?? true }
+      const section = currentSection.value
+        ? await api.updateSection(currentSection.value.id, body)
+        : await api.addSection(props.id, body)
+      await reload()
+      openSection(section, false)
+    }, 'Раздел сохранён')
+  } finally {
+    saving.value = false
+  }
 }
 
 function removeSection(section) {
@@ -193,6 +306,7 @@ function removeSection(section) {
       run(async () => {
         await api.deleteSection(section.id)
         await reload()
+        openQuestion(orderedQuestions.value[0]?.id ?? null)
       }),
   }
 }
@@ -266,6 +380,10 @@ async function savePublishing() {
     closes_at: d.closes_at ? new Date(d.closes_at).toISOString() : null,
     observer_person_ids: d.observers.map((o) => o.person_id),
   }
+  if (body.opens_at && body.closes_at && body.closes_at <= body.opens_at) {
+    error.value = 'Закрытие должно быть позже открытия'
+    return
+  }
   await run(async () => {
     if (d.id) await api.updatePublishing(d.id, { ...body, is_active: d.is_active })
     else await api.createPublishing(props.id, body)
@@ -281,6 +399,10 @@ async function togglePublishing(p) {
   })
 }
 
+const publishingStatus = { open: 'Принимает ответы', scheduled: 'Запланирована', closed: 'Закрыта' }
+const canPublish = computed(() => survey.value.questions.some(
+  (q) => q.is_active && (!q.section_id || survey.value.sections.some((s) => s.id === q.section_id && s.is_active)),
+))
 const tabs = { questions: 'Вопросы', publishings: 'Публикации', settings: 'Настройки' }
 const textarea = 'rounded-control border border-line bg-surface p-3 outline-none focus:border-brand-500'
 </script>
@@ -293,7 +415,14 @@ const textarea = 'rounded-control border border-line bg-surface p-3 outline-none
       <UiBadge v-if="!survey.is_active" tone="warning">Выключен</UiBadge>
     </div>
 
-    <div class="mt-5 flex gap-1 border-b border-line" role="tablist">
+    <RouterLink
+      :to="{ name: 'survey-preview', params: { id: props.id } }"
+      target="_blank"
+      rel="noopener"
+      class="mt-3 inline-block text-sm font-medium text-brand-700 hover:underline"
+    >Предпросмотр ↗</RouterLink>
+
+    <div class="mt-5 flex flex-wrap gap-1 border-b border-line" role="tablist">
       <button
         v-for="(label, key) in tabs"
         :key="key"
@@ -302,7 +431,7 @@ const textarea = 'rounded-control border border-line bg-surface p-3 outline-none
         :aria-selected="tab === key"
         class="-mb-px border-b-2 px-4 py-2 text-sm font-medium"
         :class="tab === key ? 'border-brand-600 text-brand-700' : 'border-transparent text-ink-muted hover:text-ink'"
-        @click="tab = key"
+        @click="changeTab(key)"
       >
         {{ label }}
       </button>
@@ -311,83 +440,125 @@ const textarea = 'rounded-control border border-line bg-surface p-3 outline-none
     <p v-if="error" role="alert" class="mt-4 rounded-control bg-red-100 px-3 py-2 text-sm text-red-800">{{ error }}</p>
     <p v-if="notice" role="status" class="mt-4 rounded-control bg-brand-50 px-3 py-2 text-sm text-brand-700">{{ notice }}</p>
 
-    <!-- Вопросы -->
-    <section v-if="tab === 'questions'" class="mt-6 grid gap-6">
-      <div v-for="group in groups" :key="group.section?.id ?? 'none'" class="grid gap-3">
-        <div v-if="group.section" class="flex flex-wrap items-center gap-2">
-          <h2 class="text-lg font-semibold">{{ group.section.title || 'Раздел без названия' }}</h2>
-          <UiBadge v-if="!group.section.is_active" tone="warning">Скрыт</UiBadge>
-          <div class="ml-auto flex gap-1 text-sm">
-            <UiButton size="sm" variant="ghost" aria-label="Раздел выше" @click="moveSection(group.section, -1)">↑</UiButton>
-            <UiButton size="sm" variant="ghost" aria-label="Раздел ниже" @click="moveSection(group.section, 1)">↓</UiButton>
-            <UiButton size="sm" variant="ghost" @click="sectionDraft = { id: group.section.id, title: group.section.title, description: group.section.description }">Изменить</UiButton>
-            <UiButton size="sm" variant="ghost" class="text-red-600" @click="removeSection(group.section)">Удалить</UiButton>
-          </div>
+    <section v-if="tab === 'questions'" class="mt-6 grid items-start gap-5 lg:grid-cols-[18rem_minmax(0,1fr)]">
+      <aside class="min-w-0 overflow-hidden rounded-card border border-line bg-surface lg:sticky lg:top-20">
+        <button
+          type="button"
+          class="flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm font-medium lg:hidden"
+          :aria-expanded="outlineOpen"
+          aria-controls="question-outline"
+          @click="outlineOpen = !outlineOpen"
+        >
+          <span>Список вопросов · {{ orderedQuestions.length }}</span>
+          <span aria-hidden="true">{{ outlineOpen ? '▴' : '▾' }}</span>
+        </button>
+        <p class="hidden px-4 pt-4 pb-2 text-sm font-semibold lg:block">Вопросы · {{ orderedQuestions.length }}</p>
+        <div class="flex flex-wrap gap-2 border-b border-line p-3">
+          <UiButton size="sm" :disabled="saving" @click="startNew(currentSection)">+ Вопрос</UiButton>
+          <UiButton size="sm" variant="ghost" :disabled="saving" @click="changePanel(() => openSection(null))">+ Раздел</UiButton>
         </div>
-        <p v-if="group.section?.description" class="-mt-2 text-sm text-ink-muted">{{ group.section.description }}</p>
-        <p v-else-if="!group.section && group.questions.length && survey.sections.length" class="text-sm font-medium text-ink-muted">Без раздела</p>
+        <div id="question-outline" :class="outlineOpen ? 'block' : 'hidden'" class="lg:block">
+          <nav aria-label="Вопросы опроса" class="max-h-[55dvh] overflow-y-auto px-2 pb-2 lg:max-h-[calc(100dvh-14rem)]">
+            <div v-for="group in groups" :key="group.section?.id ?? 'none'">
+              <button
+                v-if="group.section"
+                type="button"
+                class="mt-2 flex w-full items-center justify-between gap-2 rounded-control px-2 py-2 text-left text-sm font-semibold hover:bg-canvas"
+                :class="selected === 'section' && currentSection?.id === group.section.id ? 'bg-brand-50 text-brand-700' : ''"
+                :aria-current="selected === 'section' && currentSection?.id === group.section.id ? 'true' : undefined"
+                :disabled="saving"
+                @click="changePanel(() => openSection(group.section))"
+              >
+                <span class="min-w-0 break-words">{{ group.section.title || 'Раздел без названия' }}</span>
+                <span v-if="!group.section.is_active" class="shrink-0 text-xs font-normal text-ink-muted">Скрыт</span>
+              </button>
+              <p v-else-if="group.questions.length && survey.sections.length" class="px-2 pt-2 pb-1 text-xs font-semibold text-ink-muted">Без раздела</p>
 
-        <template v-for="(question, index) in group.questions" :key="question.id">
+              <button
+                v-for="question in group.questions"
+                :key="question.id"
+                type="button"
+                class="mt-1 flex w-full items-start gap-2.5 rounded-control px-2.5 py-2 text-left hover:bg-canvas"
+                :class="selected === question.id ? 'bg-brand-50 text-brand-700 ring-1 ring-inset ring-brand-200 hover:bg-brand-50' : ''"
+                :aria-current="selected === question.id ? 'true' : undefined"
+                :title="question.text"
+                :disabled="saving"
+                @click="chooseQuestion(question.id)"
+              >
+                <QuestionTypeIcon :type="question.question_type" class="mt-0.5 text-brand-700" />
+                <span class="min-w-0">
+                  <span class="line-clamp-2 break-words text-sm font-medium">{{ question.text }}<span v-if="question.is_required" class="text-red-600" aria-label="Обязательный"> *</span></span>
+                  <span class="mt-0.5 block text-xs text-ink-muted">
+                    {{ QUESTION_TYPES[question.question_type] }}<template v-if="!question.is_active"> · Скрыт</template>
+                  </span>
+                </span>
+              </button>
+            </div>
+            <p v-if="!orderedQuestions.length && !survey.sections.length" class="px-2 py-3 text-sm text-ink-muted">Вопросов пока нет.</p>
+          </nav>
+        </div>
+      </aside>
+
+      <div class="grid min-w-0 gap-3">
+        <template v-if="currentQuestion || selected === 'new'">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="min-w-0">
+              <p v-if="currentSection" class="break-words text-xs text-ink-muted">{{ currentSection.title || 'Раздел без названия' }}</p>
+              <h2 ref="editorHeading" tabindex="-1" class="scroll-mt-20 text-lg font-semibold outline-none">
+                {{ currentQuestion ? `Вопрос ${position} из ${orderedQuestions.length}` : 'Новый вопрос' }}
+              </h2>
+              <p v-if="questionDirty" class="text-xs text-ink-muted">Есть несохранённые изменения</p>
+            </div>
+            <div v-if="currentQuestion" class="flex flex-wrap gap-1">
+              <UiButton size="sm" variant="ghost" :disabled="saving || questionIndex <= 0" aria-label="Вопрос выше" title="Вопрос выше" @click="moveQuestion(currentQuestion, -1)">↑</UiButton>
+              <UiButton size="sm" variant="ghost" :disabled="saving || questionIndex >= currentGroup.questions.length - 1" aria-label="Вопрос ниже" title="Вопрос ниже" @click="moveQuestion(currentQuestion, 1)">↓</UiButton>
+              <UiButton size="sm" :disabled="saving" @click="changePanel(() => duplicateQuestion(currentQuestion))">Скопировать вопрос</UiButton>
+            </div>
+          </div>
           <QuestionEditor
-            v-if="editing === question.id"
-            :question="question"
+            :key="editorVersion"
+            :question="currentQuestion || null"
             :sections="survey.sections"
             :scales="scales"
+            :section-id="currentSection?.id ?? null"
             :saving="saving"
             :error="questionError"
-            @save="saveQuestion($event, question)"
-            @cancel="editing = null"
-            @delete="removeQuestion(question)"
+            @dirty="questionDirty = $event"
+            @save="saveQuestion($event, currentQuestion)"
+            @cancel="cancelQuestion"
+            @delete="removeQuestion(currentQuestion)"
             @new-scale="scaleForm = true"
           />
-          <UiCard v-else class="flex items-start gap-3" :class="!question.is_active ? 'opacity-60' : ''">
-            <div class="min-w-0 flex-1">
-              <p class="font-medium">{{ question.text }}<span v-if="question.is_required" class="text-red-600"> *</span></p>
-              <p class="mt-1 flex flex-wrap gap-2 text-xs text-ink-muted">
-                <span>{{ QUESTION_TYPES[question.question_type] }}</span>
-                <span v-if="question.options.length">· вариантов: {{ question.options.filter((o) => o.is_active).length }}</span>
-                <span v-if="question.answers_count">· ответов: {{ question.answers_count }}</span>
-                <span v-if="!question.is_active">· скрыт</span>
-              </p>
-            </div>
-            <div class="flex shrink-0 gap-1 text-sm">
-              <UiButton size="sm" variant="ghost" :disabled="index === 0" aria-label="Выше" @click="moveQuestion(question, -1)">↑</UiButton>
-              <UiButton size="sm" variant="ghost" :disabled="index === group.questions.length - 1" aria-label="Ниже" @click="moveQuestion(question, 1)">↓</UiButton>
-              <UiButton size="sm" variant="ghost" class="text-brand-700!" @click="(editing = question.id), (questionError = '')">Изменить</UiButton>
-            </div>
-          </UiCard>
+          <ScaleEditor v-if="scaleForm" @created="onScaleCreated" @cancel="scaleForm = false" />
         </template>
 
-        <QuestionEditor
-          v-if="editing === `new:${group.section?.id ?? 'none'}`"
-          :sections="survey.sections"
-          :scales="scales"
-          :section-id="newSectionId(editing)"
-          :saving="saving"
-          :error="questionError"
-          @save="saveQuestion($event, null)"
-          @cancel="editing = null"
-          @new-scale="scaleForm = true"
-        />
-        <UiButton v-else-if="group.section || !survey.sections.length" size="sm" class="justify-self-start" @click="startNew(group.section)">
-          + Вопрос{{ group.section ? ' в раздел' : '' }}
-        </UiButton>
+        <template v-else-if="selected === 'section'">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h2 ref="editorHeading" tabindex="-1" class="scroll-mt-20 text-lg font-semibold outline-none">{{ currentSection ? 'Настройки раздела' : 'Новый раздел' }}</h2>
+            <div v-if="currentSection" class="flex flex-wrap gap-1">
+              <UiButton size="sm" variant="ghost" :disabled="saving || survey.sections[0]?.id === currentSection.id" aria-label="Раздел выше" @click="moveSection(currentSection, -1)">↑</UiButton>
+              <UiButton size="sm" variant="ghost" :disabled="saving || survey.sections.at(-1)?.id === currentSection.id" aria-label="Раздел ниже" @click="moveSection(currentSection, 1)">↓</UiButton>
+              <UiButton size="sm" variant="ghost" class="text-red-600" :disabled="saving" @click="removeSection(currentSection)">Удалить раздел</UiButton>
+            </div>
+          </div>
+          <form class="grid gap-3 rounded-card border border-line bg-surface p-4 sm:p-5" @submit.prevent="saveSection">
+            <UiInput v-model="sectionDraft.title" label="Название раздела" />
+            <label class="grid gap-1.5 text-sm font-medium">
+              Пояснение
+              <textarea v-model="sectionDraft.description" rows="3" :class="textarea" />
+            </label>
+            <div class="flex gap-2">
+              <UiButton type="submit" variant="primary" size="sm" :loading="saving">Сохранить раздел</UiButton>
+              <UiButton size="sm" variant="ghost" :disabled="saving" @click="currentSection ? openSection(currentSection) : cancelQuestion()">Отмена</UiButton>
+            </div>
+          </form>
+        </template>
+
+        <UiCard v-else>
+          <h2 ref="editorHeading" tabindex="-1" class="scroll-mt-20 font-semibold outline-none">Добавьте первый вопрос</h2>
+          <p class="mt-1 text-sm text-ink-muted">Используйте кнопку «+ Вопрос». Чтобы разбить опрос на части, добавьте разделы.</p>
+        </UiCard>
       </div>
-
-      <ScaleEditor v-if="scaleForm" @created="onScaleCreated" @cancel="scaleForm = false" />
-
-      <form v-if="sectionDraft" class="grid gap-3 rounded-card border border-brand-200 bg-surface p-4" @submit.prevent="saveSection">
-        <UiInput v-model="sectionDraft.title" label="Название раздела" autofocus />
-        <label class="grid gap-1.5 text-sm font-medium">
-          Пояснение
-          <textarea v-model="sectionDraft.description" rows="2" :class="textarea" />
-        </label>
-        <div class="flex gap-2">
-          <UiButton type="submit" variant="primary" size="sm">Сохранить раздел</UiButton>
-          <UiButton size="sm" variant="ghost" @click="sectionDraft = null">Отмена</UiButton>
-        </div>
-      </form>
-      <UiButton v-else class="justify-self-start" @click="sectionDraft = { title: '', description: '' }">+ Раздел</UiButton>
     </section>
 
     <!-- Публикации -->
@@ -398,7 +569,7 @@ const textarea = 'rounded-control border border-line bg-surface p-3 outline-none
       <UiCard v-for="p in publishings" :key="p.id" class="grid gap-3">
         <div class="flex flex-wrap items-center gap-2">
           <h2 class="font-semibold">{{ p.title }}</h2>
-          <UiBadge :tone="p.is_active ? 'success' : 'warning'">{{ p.is_active ? 'Принимает ответы' : 'Закрыта' }}</UiBadge>
+          <UiBadge :tone="p.status === 'open' ? 'success' : 'warning'">{{ publishingStatus[p.status] }}</UiBadge>
           <UiBadge>{{ p.is_anonymous ? 'Анонимная' : 'С входом через SkolStream' }}</UiBadge>
         </div>
         <UiCopyField :value="publicUrl(p)" label="Ссылка на опрос" />
@@ -430,7 +601,7 @@ const textarea = 'rounded-control border border-line bg-surface p-3 outline-none
           <UiButton variant="ghost" @click="publishingDraft = null">Отмена</UiButton>
         </div>
       </form>
-      <UiButton v-else variant="primary" class="justify-self-start" :disabled="!survey.questions.length" @click="newPublishing">Новая публикация</UiButton>
+      <UiButton v-else variant="primary" class="justify-self-start" :disabled="!canPublish" @click="newPublishing">Новая публикация</UiButton>
     </section>
 
     <!-- Настройки -->
@@ -462,6 +633,16 @@ const textarea = 'rounded-control border border-line bg-surface p-3 outline-none
         <UiButton v-if="isOwner" variant="ghost" class="text-red-600" @click="remove">Удалить опрос</UiButton>
       </div>
     </section>
+
+    <UiConfirm
+      :open="!!discardAction"
+      title="Перейти без сохранения?"
+      confirm-label="Перейти"
+      @update:open="discardAction = null"
+      @confirm="discardAndContinue"
+    >
+      Изменения в текущем редакторе будут потеряны.
+    </UiConfirm>
 
     <UiConfirm
       :open="!!removal"

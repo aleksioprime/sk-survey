@@ -5,6 +5,8 @@
  */
 import { UiInput } from 'sk-ui'
 import { computed, useId } from 'vue'
+import MatrixField from './MatrixField.vue'
+import { MATRIX_TYPES } from '@/utils/questionTypes'
 import { htmlToText, textToHtml } from '@/utils/richText'
 
 const props = defineProps({
@@ -143,6 +145,14 @@ const choiceClass = (active) =>
         {{ choice.label }}
       </button>
     </div>
+
+    <MatrixField
+      v-else-if="MATRIX_TYPES.includes(question.question_type)"
+      :question="question"
+      :options="options"
+      :model-value="model.matrix_choices || {}"
+      @update:model-value="update({ matrix_choices: $event })"
+    />
 
     <div v-else-if="question.question_type === 'single_choice'" class="grid gap-2" role="radiogroup" :aria-label="question.text">
       <button

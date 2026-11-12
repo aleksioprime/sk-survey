@@ -33,6 +33,18 @@ class TextAnswer(BaseModel):
     text: str
 
 
+class ChoiceBreakdown(BaseModel):
+    base: int
+    options: list[OptionStat] = []
+    excluded: list[OptionStat] = []
+
+
+class MatrixRowResult(ChoiceBreakdown):
+    row_id: str
+    title: str
+    answered: int
+
+
 class QuestionResult(BaseModel):
     question_id: int
     section_id: int | None
@@ -42,6 +54,8 @@ class QuestionResult(BaseModel):
     answered: int
     skipped: int
     options: list[OptionStat] = []
+    comparison: ChoiceBreakdown | None = None
+    matrix_rows: list[MatrixRowResult] = []
     mean: float | None = None
     median: float | None = None
     min: float | None = None

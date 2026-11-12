@@ -1,8 +1,9 @@
 from datetime import datetime
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
-from app.modules.surveys.models import QUESTION_TYPES, SCALE_GENERATED, SCALE_ITEMS
+from app.modules.surveys.models import MATRIX_TYPES, QUESTION_TYPES, SCALE_GENERATED, SCALE_ITEMS
 
 _TYPE_PATTERN = '^(' + '|'.join(QUESTION_TYPES) + ')$'
 
@@ -63,6 +64,11 @@ class ScaleOut(ORMModel):
 # --- Вопросы --------------------------------------------------------------------------------
 
 
+class MatrixRow(BaseModel):
+    id: str = Field(pattern=r'^[a-zA-Z0-9_-]{1,64}$')
+    title: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=1000)]
+
+
 class OptionIn(BaseModel):
     id: int | None = None
     title: str = Field(min_length=1, max_length=1000)
@@ -70,6 +76,7 @@ class OptionIn(BaseModel):
     value: str = Field(default='', max_length=255)
     score: float | None = None
     is_active: bool = True
+    exclude_from_base: bool = False
 
 
 class OptionOut(ORMModel):
@@ -80,6 +87,7 @@ class OptionOut(ORMModel):
     score: float | None
     order: int
     is_active: bool
+    exclude_from_base: bool
 
 
 class RangeIn(BaseModel):
@@ -112,11 +120,19 @@ class QuestionIn(BaseModel):
     is_options_shuffled: bool = False
     options: list[OptionIn] = []
     ranges: list[RangeIn] = []
+    matrix_rows: list[MatrixRow] = Field(default=[], max_length=50)
 
     @model_validator(mode='after')
     def _check(self):
         if self.question_type in ('single_choice', 'multiple_choice', 'ranking') and len(self.options) < 2:
             raise ValueError('Добавьте хотя бы два варианта ответа')
+        if self.question_type in MATRIX_TYPES:
+            if not self.matrix_rows or len({row.id for row in self.matrix_rows}) != len(self.matrix_rows):
+                raise ValueError('Добавьте строки матрицы с уникальными идентификаторами')
+            if not 2 <= sum(o.is_active for o in self.options) <= 50:
+                raise ValueError('В матрице должно быть от 2 до 50 активных столбцов')
+        elif self.matrix_rows:
+            raise ValueError('Строки поддерживаются только в матрице')
         if self.question_type == 'scale' and self.scale_id is None:
             raise ValueError('Выберите шкалу')
         if self.min_selections and self.max_selections and self.min_selections > self.max_selections:
@@ -144,6 +160,7 @@ class QuestionOut(ORMModel):
     is_options_shuffled: bool
     options: list[OptionOut]
     ranges: list[RangeOut]
+    matrix_rows: list[MatrixRow]
     answers_count: int = 0
 
 
@@ -280,4 +297,5 @@ class PublishingOut(ORMModel):
     observers: list[ObserverOut] = []
     submitted_count: int = 0
     in_progress_count: int = 0
+    status: Literal['open', 'scheduled', 'closed']
     can_edit: bool = False

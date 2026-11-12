@@ -48,7 +48,7 @@ async function logout() {
       </div>
     </header>
     <main class="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
-      <RouterView />
+      <RouterView :key="$route.path" />
     </main>
     <SchoolFooter />
   </div>

@@ -19,11 +19,14 @@ from sqlalchemy import (
     Table,
     Text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 QUESTION_TYPES = (
     'text',  # Текст
     'rich_text',  # Форматированный текст
+    'matrix_multiple',  # Несколько вариантов в каждой строке
+    'matrix_single',  # Один вариант в каждой строке
     'single_choice',  # Одиночный выбор
     'multiple_choice',  # Множественный выбор
     'number',  # Число
@@ -31,6 +34,7 @@ QUESTION_TYPES = (
     'scale',  # Шкала
     'ranking',  # Расставить по порядку
 )
+MATRIX_TYPES = ('matrix_single', 'matrix_multiple')
 CHOICE_TYPES = ('single_choice', 'multiple_choice', 'ranking')
 
 SCALE_GENERATED = 'generated'  # значения от min до max с шагом
@@ -144,6 +148,8 @@ class Question(IdMixin, TimestampMixin, Base):
     max_number: Mapped[float | None] = mapped_column(Float)
     is_options_shuffled: Mapped[bool] = mapped_column(Boolean, default=False, server_default='false')
 
+    matrix_rows: Mapped[list[dict[str, str]]] = mapped_column(JSONB, default=list, server_default='[]')
+
     survey: Mapped[Survey] = relationship(back_populates='questions')
     scale: Mapped[Scale | None] = relationship(lazy='selectin')
     options: Mapped[list['Option']] = relationship(
@@ -166,6 +172,8 @@ class Option(IdMixin, TimestampMixin, Base):
     score: Mapped[float | None] = mapped_column(Float)
     order: Mapped[int] = mapped_column(Integer, default=0, server_default='0')
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default='true')
+
+    exclude_from_base: Mapped[bool] = mapped_column(Boolean, default=False, server_default='false')
 
     question: Mapped[Question] = relationship(back_populates='options')
 

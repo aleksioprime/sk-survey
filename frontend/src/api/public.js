@@ -27,6 +27,29 @@ export function forgetResponseToken(publicToken) {
   }
 }
 
+const completedKey = (token) => `sks-completed:${token}`
+
+export function hasCompleted(publicToken) {
+  try {
+    return localStorage.getItem(completedKey(publicToken)) === 'yes'
+  } catch {
+    return false
+  }
+}
+
+export function markCompleted(publicToken) {
+  try {
+    localStorage.setItem(completedKey(publicToken), 'yes')
+    forgetResponseToken(publicToken)
+  } catch {
+    // Если отметку записать не удалось, оставляем ключ для проверки статуса.
+  }
+}
+
+export async function fetchPreview(surveyId) {
+  return (await http.get(`/v1/surveys/${surveyId}/preview`)).data
+}
+
 const withToken = (responseToken) => ({ headers: { 'X-Response-Token': responseToken } })
 
 export async function fetchPublicSurvey(publicToken) {

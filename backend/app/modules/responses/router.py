@@ -4,12 +4,22 @@ from typing import Annotated
 
 from fastapi import APIRouter, Header, HTTPException, Request, status
 from sk_common.auth.router import client_info
-from sk_common.deps import Db, OptionalUser
+from sk_common.deps import CurrentUser, Db, OptionalUser
 from sk_common.redis import get_redis, hit_limit
 
 from app.core.config import settings
 from app.modules.responses import service
 from app.modules.responses.schemas import AnswerIn, AnswerOut, PublicSurvey, ResponseState, StartResult, SubmitResult
+from app.modules.surveys.permissions import editable_survey
+
+preview_router = APIRouter(prefix='/v1/surveys', tags=['surveys'])
+
+
+@preview_router.get('/{survey_id}/preview', response_model=PublicSurvey, summary='Предпросмотр опроса')
+async def preview(survey_id: int, db: Db, user: CurrentUser) -> PublicSurvey:
+    survey, _ = await editable_survey(db, survey_id, user)
+    return await service.survey_form(db, survey, is_anonymous=survey.is_anonymous)
+
 
 router = APIRouter(prefix='/v1/public', tags=['public'])
 
@@ -29,7 +39,7 @@ async def start(token: str, request: Request, db: Db, user: OptionalUser) -> Sta
     if (
         publishing.is_anonymous
         and ip
-        and await hit_limit(get_redis(), f'survey-start:{ip}', settings.responses_per_ip_hour, 3600)
+        and await hit_limit(get_redis(), f'survey-start:{publishing.id}:{ip}', settings.responses_per_ip_hour, 3600)
     ):
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS, 'Слишком много прохождений с этого адреса. Попробуйте позже.'

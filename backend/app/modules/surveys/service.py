@@ -2,16 +2,20 @@
 
 import secrets
 import string
+from datetime import datetime
 
 from fastapi import HTTPException, status
 from sk_common.people.models import Person, User
 from sk_common.people.service import ensure_user
+from sk_common.security import now_utc
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from app.modules.responses.models import STATUS_IN_PROGRESS, STATUS_SUBMITTED, Answer, Response
+from app.modules.responses.service import active_questions
 from app.modules.surveys.models import (
+    MATRIX_TYPES,
     ROLE_EDITOR,
     ROLE_OWNER,
     SCALE_ITEMS,
@@ -218,6 +222,7 @@ async def copy_survey(db: AsyncSession, source: Survey, user: User) -> Survey:
                     'min_number',
                     'max_number',
                     'is_options_shuffled',
+                    'matrix_rows',
                 )
             },
         )
@@ -227,6 +232,7 @@ async def copy_survey(db: AsyncSession, source: Survey, user: User) -> Survey:
                 description=o.description,
                 value=o.value,
                 score=o.score,
+                exclude_from_base=o.exclude_from_base,
                 order=o.order,
                 is_active=o.is_active,
             )
@@ -291,8 +297,8 @@ async def update_section(db: AsyncSession, section: Section, data: SectionIn) ->
     await db.flush()
 
 
-async def get_question(db: AsyncSession, question_id: int) -> Question:
-    question = await db.get(Question, question_id)
+async def get_question(db: AsyncSession, question_id: int, lock: bool = False) -> Question:
+    question = await db.get(Question, question_id, with_for_update=lock)
     if question is None:
         raise not_found('Вопрос не найден')
     return question
@@ -328,6 +334,12 @@ async def update_question(db: AsyncSession, question: Question, data: QuestionIn
     answered = await answers_by_question(db, [question.id])
     if answered and data.question_type != question.question_type:
         raise conflict('На вопрос уже отвечали — тип ответа менять нельзя')
+    if answered and question.question_type in MATRIX_TYPES:
+        current = [(o.id, o.title, o.is_active) for o in question.options]
+        incoming = [(o.id, o.title, o.is_active) for o in data.options]
+        rows = [row.model_dump() for row in data.matrix_rows]
+        if current != incoming or question.matrix_rows != rows:
+            raise conflict('На матрицу уже отвечали — строки и варианты менять нельзя')
     for field, value in data.model_dump(exclude={'options', 'ranges'}).items():
         setattr(question, field, value)
 
@@ -425,7 +437,31 @@ async def new_public_token(db: AsyncSession) -> str:
             return token
 
 
+def _check_period(opens_at: datetime | None, closes_at: datetime | None) -> None:
+    if any(value and value.utcoffset() is None for value in (opens_at, closes_at)):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, 'Укажите часовой пояс для дат публикации')
+    if opens_at and closes_at and closes_at <= opens_at:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, 'Закрытие должно быть позже открытия')
+
+
+async def _check_publishable(db: AsyncSession, survey_id: int) -> None:
+    questions = await active_questions(db, survey_id)
+    if not questions:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, 'Добавьте хотя бы один доступный вопрос')
+    for question in questions:
+        if (
+            question.question_type in (*MATRIX_TYPES, 'single_choice', 'multiple_choice', 'ranking')
+            and sum(option.is_active for option in question.options) < 2
+        ):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f'Мало активных вариантов: {question.text}')
+        if question.question_type == 'scale' and not question.scale_id:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f'Не задана шкала: {question.text}')
+
+
 async def create_publishing(db: AsyncSession, survey: Survey, user: User, data: PublishingIn) -> Publishing:
+    _check_period(data.opens_at, data.closes_at)
+    if data.is_active:
+        await _check_publishable(db, survey.id)
     publishing = Publishing(
         survey_id=survey.id,
         public_token=await new_public_token(db),
@@ -440,6 +476,10 @@ async def create_publishing(db: AsyncSession, survey: Survey, user: User, data: 
 
 async def update_publishing(db: AsyncSession, publishing: Publishing, data: PublishingPatch) -> None:
     changes = data.model_dump(exclude_unset=True)
+    if {'opens_at', 'closes_at'} & changes.keys():
+        _check_period(changes.get('opens_at', publishing.opens_at), changes.get('closes_at', publishing.closes_at))
+    if not publishing.is_active and changes.get('is_active'):
+        await _check_publishable(db, publishing.survey_id)
     if (person_ids := changes.pop('observer_person_ids', None)) is not None:
         publishing.observers = await users_for_persons(db, person_ids)
     anonymity_changed = changes.get('is_anonymous') is not None and changes['is_anonymous'] != publishing.is_anonymous
@@ -461,6 +501,17 @@ async def delete_publishing(db: AsyncSession, publishing: Publishing) -> None:
         raise conflict('По публикации уже есть ответы. Выключите её вместо удаления.')
     await db.delete(publishing)
     await db.flush()
+
+
+def publishing_status(publishing: Publishing) -> str:
+    now = now_utc()
+    if not publishing.is_active or not publishing.survey.is_active:
+        return 'closed'
+    if publishing.closes_at and publishing.closes_at <= now:
+        return 'closed'
+    if publishing.opens_at and publishing.opens_at > now:
+        return 'scheduled'
+    return 'open'
 
 
 async def publishings_out(
@@ -500,6 +551,7 @@ async def publishings_out(
                 ],
                 submitted_count=counts.get((p.id, STATUS_SUBMITTED), 0),
                 in_progress_count=counts.get((p.id, STATUS_IN_PROGRESS), 0),
+                status=publishing_status(p),
                 can_edit=editable is None or p.survey_id in editable,
             )
         )
