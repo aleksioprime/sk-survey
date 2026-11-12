@@ -5,8 +5,9 @@
  */
 import { UiInput } from 'sk-ui'
 import { computed, useId } from 'vue'
+import TextListField from './TextListField.vue'
 import MatrixField from './MatrixField.vue'
-import { MATRIX_TYPES } from '@/utils/questionTypes'
+import { MATRIX_TYPES, TEXT_LIST } from '@/utils/questionTypes'
 import { htmlToText, textToHtml } from '@/utils/richText'
 
 const props = defineProps({
@@ -106,6 +107,13 @@ const choiceClass = (active) =>
       placeholder="Ваш ответ"
       :aria-label="question.text"
       @input="update({ text_value: $event.target.value })"
+    />
+
+    <TextListField
+      v-else-if="question.question_type === TEXT_LIST"
+      :question="question"
+      :model-value="model.text_rows || []"
+      @update:model-value="update({ text_rows: $event })"
     />
 
     <textarea

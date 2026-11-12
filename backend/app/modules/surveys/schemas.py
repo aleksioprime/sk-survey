@@ -3,7 +3,14 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
-from app.modules.surveys.models import MATRIX_TYPES, QUESTION_TYPES, SCALE_GENERATED, SCALE_ITEMS
+from app.modules.surveys.models import (
+    MATRIX_TYPES,
+    QUESTION_TYPES,
+    SCALE_GENERATED,
+    SCALE_ITEMS,
+    TEXT_LIST,
+    TEXT_LIST_MAX_ROWS,
+)
 
 _TYPE_PATTERN = '^(' + '|'.join(QUESTION_TYPES) + ')$'
 
@@ -115,6 +122,8 @@ class QuestionIn(BaseModel):
     scale_id: int | None = None
     min_selections: int | None = Field(default=None, ge=0)
     max_selections: int | None = Field(default=None, ge=1)
+    min_rows: int | None = Field(default=None, ge=1, le=TEXT_LIST_MAX_ROWS)
+    max_rows: int | None = Field(default=None, ge=1, le=TEXT_LIST_MAX_ROWS)
     min_number: float | None = None
     max_number: float | None = None
     is_options_shuffled: bool = False
@@ -133,6 +142,11 @@ class QuestionIn(BaseModel):
                 raise ValueError('В матрице должно быть от 2 до 50 активных столбцов')
         elif self.matrix_rows:
             raise ValueError('Строки поддерживаются только в матрице')
+        if self.min_rows is not None or self.max_rows is not None:
+            if self.question_type != TEXT_LIST:
+                raise ValueError('Число строк задаётся только для списка текстовых ответов')
+            if self.min_rows and self.max_rows and self.min_rows > self.max_rows:
+                raise ValueError('Минимум строк больше максимума')
         if self.question_type == 'scale' and self.scale_id is None:
             raise ValueError('Выберите шкалу')
         if self.min_selections and self.max_selections and self.min_selections > self.max_selections:
@@ -155,6 +169,8 @@ class QuestionOut(ORMModel):
     scale_id: int | None
     min_selections: int | None
     max_selections: int | None
+    min_rows: int | None
+    max_rows: int | None
     min_number: float | None
     max_number: float | None
     is_options_shuffled: bool

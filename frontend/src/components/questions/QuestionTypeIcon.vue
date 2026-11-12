@@ -7,6 +7,7 @@ const shapes = {
   matrix_single: 'M3 4h18v16H3zM3 9h18m-18 5h18M10 4v16m5-16v16M12.5 11.5h.01m5.5 5h.01',
   matrix_multiple: 'M3 4h18v16H3zM3 9h18m-18 5h18M10 4v16m5-16v16m-4-8 1 1 2-2m2 1 1 1 2-2m-8 6 1 1 2-2',
   scale: 'M3 8h18v8H3zM7 8v3m5-3v5m5-5v3',
+  text_list: 'M3 5h.01M3 11h.01M3 17h.01M7 5h14m-14 6h14M7 17h14',
   text: 'M4 6h16M4 11h16M4 16h10',
   rich_text: 'M5 3h11l3 3v15H5zm10 0v5h4M8 11h8m-8 3h8m-8 3h5',
   number: 'M10 4 6 20M18 4l-4 16M4 9h17M3 15h17',

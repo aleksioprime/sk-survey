@@ -23,7 +23,7 @@ import {
 import QuestionField from '@/components/questions/QuestionField.vue'
 import { pageTitle } from '@/brand'
 import { paragraphs } from '@/utils/richText'
-import { MATRIX_TYPES } from '@/utils/questionTypes'
+import { MATRIX_TYPES, TEXT_LIST, countTextRows, textListError } from '@/utils/questionTypes'
 import { seededShuffle } from '@/utils/shuffle'
 
 const props = defineProps({
@@ -58,6 +58,7 @@ const emptyAnswer = () => ({
   option_ids: [],
   ranking: [],
   matrix_choices: {},
+  text_rows: [],
   is_skipped: false,
 })
 
@@ -93,6 +94,7 @@ const hasMatrix = computed(() => current.value?.questions.some((q) => MATRIX_TYP
 function isAnswered(question, answer) {
   if (!answer) return false
   if (answer.is_skipped) return !question.is_required
+  if (question.question_type === TEXT_LIST) return countTextRows(answer.text_rows) > 0 && !textListError(question, answer)
   if (MATRIX_TYPES.includes(question.question_type)) {
     const choices = answer.matrix_choices || {}
     const selected = (row) => Object.hasOwn(choices, row.id) && choices[row.id].length > 0
@@ -253,6 +255,14 @@ function checkPage() {
   let ok = true
   for (const question of current.value.questions) {
     const answer = answers[question.id]
+    if (question.question_type === TEXT_LIST) {
+      const error = textListError(question, answer)
+      if (error) {
+        errors[question.id] = error
+        ok = false
+      }
+      continue
+    }
     const count = (answer?.option_ids?.length || 0) + (answer?.ranking?.length || 0)
     if (question.is_required && !isAnswered(question, answer)) {
       errors[question.id] = MATRIX_TYPES.includes(question.question_type)
@@ -305,9 +315,10 @@ async function submit() {
     else forgetResponseToken(props.token)
     window.scrollTo({ top: 0 })
   } catch (e) {
-    const missing = e?.response?.data?.detail?.question_ids
+    const detail = e?.response?.data?.detail
+    const missing = detail?.question_ids
     if (missing?.length) {
-      missing.forEach((id) => (errors[id] = 'Это обязательный вопрос'))
+      missing.forEach((id) => (errors[id] = detail.question_errors?.[id] || 'Это обязательный вопрос'))
       const target = pages.value.findIndex((p) => p.questions.some((q) => missing.includes(q.id)))
       if (target >= 0) page.value = target
     }

@@ -3,6 +3,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.modules.surveys.models import TEXT_LIST_MAX_ROWS, TEXT_LIST_ROW_LENGTH
 from app.modules.surveys.schemas import MatrixRow, RangeOut, ScaleOut, SectionOut
 
 
@@ -26,6 +27,8 @@ class PublicQuestion(ORMModel):
     scale_id: int | None
     min_selections: int | None
     max_selections: int | None
+    min_rows: int | None
+    max_rows: int | None
     min_number: float | None
     max_number: float | None
     is_options_shuffled: bool
@@ -49,6 +52,9 @@ class PublicSurvey(BaseModel):
 
 class AnswerIn(BaseModel):
     text_value: str | None = Field(default=None, max_length=20000)
+    text_rows: list[Annotated[str, Field(max_length=TEXT_LIST_ROW_LENGTH, pattern=r'^[^\x00-\x08\x0a-\x1f]*$')]] = (
+        Field(default=[], max_length=TEXT_LIST_MAX_ROWS)
+    )
     rich_text_value: str | None = Field(default=None, max_length=100000)
     number_value: float | None = None
     boolean_value: bool | None = None
@@ -72,6 +78,7 @@ class AnswerOut(ORMModel):
     option_id: int | None
     option_ids: list[int]
     ranking_ids: list[int]
+    text_rows: list[str]
     matrix_choices: dict[str, list[int]]
     is_skipped: bool
 

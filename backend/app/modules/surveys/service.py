@@ -219,6 +219,8 @@ async def copy_survey(db: AsyncSession, source: Survey, user: User) -> Survey:
                     'scale_id',
                     'min_selections',
                     'max_selections',
+                    'min_rows',
+                    'max_rows',
                     'min_number',
                     'max_number',
                     'is_options_shuffled',
