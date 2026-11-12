@@ -6,20 +6,29 @@ import { exportUrl, getPublishing, getResults } from '@/api/surveys'
 import QuestionTypeIcon from '@/components/questions/QuestionTypeIcon.vue'
 import ChoiceBreakdown from '@/components/questions/ChoiceBreakdown.vue'
 import { QUESTION_TYPES } from '@/utils/questionTypes'
+import { useUrlQuery } from '@/utils/useUrlQuery'
 
 const props = defineProps({ id: { type: String, required: true } })
 
 const publishing = ref(null)
 const results = ref(null)
-const includeInProgress = ref(false)
+const { route, setQuery } = useUrlQuery()
+const includeInProgress = computed({
+  get: () => route.query.drafts === '1',
+  set: (value) => setQuery({ drafts: value ? '1' : undefined }),
+})
 const error = ref('')
 const textLimit = ref({})
 
+let lastLoad = 0
 async function load() {
+  const request = ++lastLoad
+  error.value = ''
   try {
-    results.value = await getResults(props.id, includeInProgress.value)
+    const result = await getResults(props.id, includeInProgress.value)
+    if (request === lastLoad) results.value = result
   } catch (e) {
-    error.value = errorMessage(e)
+    if (request === lastLoad) error.value = errorMessage(e)
   }
 }
 
@@ -32,7 +41,7 @@ onMounted(async () => {
   }
   await load()
 })
-watch(includeInProgress, load)
+watch(includeInProgress, () => { if (publishing.value) load() })
 
 const total = computed(() => (results.value ? results.value.responses + (includeInProgress.value ? results.value.in_progress : 0) : 0))
 const maxCount = (items) => Math.max(1, ...items.map((i) => i.count))
