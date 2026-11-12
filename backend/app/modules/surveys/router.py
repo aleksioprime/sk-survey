@@ -219,22 +219,20 @@ async def create_scale(payload: ScaleIn, db: Db, user: CurrentUser) -> ScaleOut:
 
 
 @router.put('/scales/{scale_id}', response_model=ScaleOut, summary='Изменить шкалу')
-async def update_scale(scale_id: int, payload: ScaleIn, db: Db, user: CurrentUser) -> Scale:
+async def update_scale(scale_id: int, payload: ScaleIn, db: Db, user: CurrentUser) -> ScaleOut:
     _require_creator(user)
-    scale = await db.get(Scale, scale_id)
-    if scale is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, 'Шкала не найдена')
+    scale = await service.unused_scale_for_update(db, scale_id)
     await service.save_scale(db, payload, scale)
     record(db, 'scale.update', 'scale', scale.id, user.id)
     await db.commit()
     await db.refresh(scale, ['items'])
-    return scale
+    return ScaleOut.model_validate(scale).model_copy(update={'can_delete': True})
 
 
 @router.delete('/scales/{scale_id}', status_code=204, summary='Удалить неиспользуемую шкалу')
 async def delete_scale(scale_id: int, db: Db, user: CurrentUser) -> Response:
     _require_creator(user)
-    await service.delete_scale(db, scale_id)
+    await db.delete(await service.unused_scale_for_update(db, scale_id))
     record(db, 'scale.delete', 'scale', scale_id, user.id)
     await db.commit()
     return Response(status_code=204)

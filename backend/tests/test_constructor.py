@@ -252,21 +252,34 @@ async def test_scale_usage_is_limited_to_surveys_the_user_can_edit(db, client):
         visible = (await stranger.get('/api/v1/scales', params={'include_usage': True})).json()
         scale = next(scale for scale in visible if scale['id'] == scale_id)
         assert scale['used_in'] == [] and scale['can_delete'] is False
+        assert (await stranger.put(scale_url, json={'title': 'Новое название'})).status_code == 409
         assert (await stranger.delete(scale_url)).status_code == 409
     assert (await client.delete(scale_url)).status_code == 409
     saved = (await client.get(f'/api/v1/surveys/{survey["id"]}')).json()
     assert next(q for q in saved['questions'] if q['question_type'] == 'scale')['scale_id'] == scale_id
 
 
-async def test_delete_unused_scale(db, client):
+async def test_update_and_delete_unused_scale(db, client):
     await login_employee(db, client)
-    created = await client.post('/api/v1/scales', json={'title': 'Неиспользуемая шкала'})
+    data = {
+        'title': 'Неиспользуемая шкала',
+        'scale_type': 'items',
+        'items': [{'title': 'Согласен', 'description': 'Описание', 'value': 'agree', 'score': 3}],
+    }
+    created = await client.post('/api/v1/scales', json=data)
     assert created.status_code == 201
     scale = created.json()
     assert scale['can_delete'] is True
     url = f'/api/v1/scales/{scale["id"]}'
+    item = scale['items'][0]
+    edited = await client.put(url, json={**data, 'title': 'Новая шкала', 'items': [{**item, 'title': 'Да'}]})
+    assert edited.status_code == 200
+    updated = edited.json()
+    assert updated['id'] == scale['id'] and updated['title'] == 'Новая шкала' and updated['can_delete'] is True
+    assert updated['items'] == [{**item, 'title': 'Да'}]
     async with other_client(client) as student:
         await login_as(db, student, email='student@example.org')
+        assert (await student.put(url, json=data)).status_code == 403
         assert (await student.delete(url)).status_code == 403
     assert (await client.delete(url)).status_code == 204
     assert (await client.delete(url)).status_code == 404

@@ -296,6 +296,6 @@ function save() {
     />
   </form>
   <UiDialog v-if="allowCreateScale" v-model:open="scaleDialogOpen" :busy="scaleSaving" title="Новая шкала">
-    <ScaleEditor v-model:saving="scaleSaving" embedded @created="onScaleCreated" @cancel="scaleDialogOpen = false" />
+    <ScaleEditor v-model:saving="scaleSaving" embedded @saved="onScaleCreated" @cancel="scaleDialogOpen = false" />
   </UiDialog>
 </template>

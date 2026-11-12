@@ -496,13 +496,13 @@ async def scale_usage(db: AsyncSession, user: User) -> dict[int, list[ScaleSurve
     return usage
 
 
-async def delete_scale(db: AsyncSession, scale_id: int) -> None:
+async def unused_scale_for_update(db: AsyncSession, scale_id: int) -> Scale:
     scale = await db.get(Scale, scale_id, with_for_update=True)
     if scale is None:
         raise not_found('Шкала не найдена')
     if await db.scalar(select(exists().where(Question.scale_id == scale_id))):
-        raise conflict('Шкала уже используется в вопросах и не может быть удалена.')
-    await db.delete(scale)
+        raise conflict('Шкала уже используется в вопросах. Её нельзя редактировать или удалить.')
+    return scale
 
 
 async def save_scale(db: AsyncSession, data: ScaleIn, scale: Scale | None = None) -> Scale:
