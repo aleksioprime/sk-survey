@@ -46,25 +46,27 @@ function toggle({ person, state }) {
 
     <div class="grid gap-2">
       <ul v-if="rows.length" class="divide-y divide-line rounded-control border border-line">
-        <li v-for="row in rows" :key="keyFor(row.person)" class="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+        <li v-for="row in rows" :key="keyFor(row.person)" class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-3 py-2">
           <div class="min-w-0">
-            <p class="break-words text-sm font-medium">{{ row.person.full_name }}</p>
-            <p v-if="row.person.email && row.person.email !== row.person.full_name" class="break-all text-xs text-ink-muted">{{ row.person.email }}</p>
+            <p class="text-sm font-medium wrap-anywhere">{{ row.person.full_name }}</p>
+            <p v-if="row.person.email && row.person.email !== row.person.full_name" class="text-xs text-ink-muted wrap-anywhere">{{ row.person.email }}</p>
+            <UiBadge v-if="labels[row.state]" class="mt-1" :tone="row.state === 'removed' ? 'warning' : 'brand'">{{ labels[row.state] }}</UiBadge>
           </div>
-          <div class="flex flex-wrap items-center gap-2">
-            <UiBadge v-if="labels[row.state]" :tone="row.state === 'removed' ? 'warning' : 'brand'">{{ labels[row.state] }}</UiBadge>
-            <UiBadge v-if="isSelf(row.person)" tone="brand" title="Себя убрать нельзя">Вы</UiBadge>
-            <UiButton
-              v-else
-              size="sm"
-              variant="ghost"
-              :disabled="saving"
-              :aria-label="`${row.state === 'removed' ? 'Вернуть' : 'Убрать'} ${row.person.full_name}`"
-              @click="toggle(row)"
-            >
-              {{ row.state === 'removed' ? 'Вернуть' : 'Убрать' }}
-            </UiButton>
-          </div>
+          <UiBadge v-if="isSelf(row.person)" tone="brand" title="Себя убрать нельзя">Вы</UiBadge>
+          <UiButton
+            v-else
+            :variant="row.state === 'removed' ? 'secondary' : 'danger-outline'"
+            class="size-10 p-0!"
+            :disabled="saving"
+            :aria-label="`${row.state === 'removed' ? 'Вернуть' : 'Убрать'} ${row.person.full_name}`"
+            :title="row.state === 'removed' ? 'Вернуть редактора' : 'Убрать редактора'"
+            @click="toggle(row)"
+          >
+            <svg aria-hidden="true" class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+              <path v-if="row.state === 'removed'" d="M9 14 4 9m0 0 5-5M4 9h10a5 5 0 0 1 0 10h-2" />
+              <path v-else d="M4 6h16M9 6V4h6v2m3 0-1 14H7L6 6m4 4v6m4-6v6" />
+            </svg>
+          </UiButton>
         </li>
       </ul>
     </div>
