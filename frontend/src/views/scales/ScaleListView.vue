@@ -15,6 +15,7 @@ const removal = ref(null)
 const removing = ref(false)
 const editorTitles = { new: 'Новая шкала', copy: 'Копия шкалы', edit: 'Редактирование шкалы' }
 const usageHint = 'Шкала используется в вопросах'
+const blockedHint = ref(null)
 const columns = [
   { key: 'title', label: 'Название', primary: true, sortable: true },
   { key: 'type', label: 'Тип', sortable: true },
@@ -60,6 +61,16 @@ function markUnavailable(id, status) {
     scales.value = scales.value.map((scale) => scale.id === id ? { ...scale, can_delete: false } : scale)
   } else if (status === 404) {
     scales.value = scales.value.filter((scale) => scale.id !== id)
+  }
+}
+
+function scaleAction(row, action) {
+  if (!row.can_delete) {
+    blockedHint.value = blockedHint.value === row.id ? null : row.id
+  } else if (action === 'edit') {
+    openEditor('edit', row)
+  } else {
+    removal.value = row
   }
 }
 
@@ -129,14 +140,16 @@ function numericPreview(scale) {
               <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
             </svg>
           </UiButton>
-          <div class="flex flex-wrap gap-2 md:flex-nowrap" :title="row.can_delete ? undefined : usageHint">
+          <div class="relative flex flex-wrap gap-2 md:flex-nowrap">
             <UiButton
-              class="size-10 p-0! disabled:cursor-not-allowed"
+              class="size-10 p-0! aria-disabled:cursor-not-allowed aria-disabled:opacity-60"
               :aria-label="`Редактировать шкалу ${row.title}`"
-              :aria-describedby="row.can_delete ? undefined : `scale-usage-${row.id}`"
-              :title="row.can_delete ? 'Редактировать шкалу' : usageHint"
-              :disabled="!row.can_delete"
-              @click="openEditor('edit', row)"
+              :aria-describedby="blockedHint === row.id ? `scale-usage-${row.id}` : undefined"
+              :title="row.can_delete ? 'Редактировать шкалу' : undefined"
+              :aria-disabled="!row.can_delete || undefined"
+              @click="scaleAction(row, 'edit')"
+              @blur="blockedHint = null"
+              @keydown.esc.stop="blockedHint = null"
             >
               <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" class="size-5">
                 <path d="m14.5 5.5 4 4M4 20l1-4.5L16.5 4a2.8 2.8 0 0 1 4 4L9 19z" />
@@ -144,20 +157,27 @@ function numericPreview(scale) {
             </UiButton>
             <UiButton
               variant="danger-outline"
-              class="size-10 p-0! disabled:cursor-not-allowed"
+              class="size-10 p-0! aria-disabled:cursor-not-allowed aria-disabled:opacity-60"
               :aria-label="`Удалить шкалу ${row.title}`"
-              :aria-describedby="row.can_delete ? undefined : `scale-usage-${row.id}`"
-              :title="row.can_delete ? 'Удалить шкалу' : usageHint"
-              :disabled="!row.can_delete"
-              @click="removal = row"
+              :aria-describedby="blockedHint === row.id ? `scale-usage-${row.id}` : undefined"
+              :title="row.can_delete ? 'Удалить шкалу' : undefined"
+              :aria-disabled="!row.can_delete || undefined"
+              @click="scaleAction(row, 'delete')"
+              @blur="blockedHint = null"
+              @keydown.esc.stop="blockedHint = null"
             >
               <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" class="size-5">
                 <path d="M4 6h16M9 6V4h6v2m3 0-1 14H7L6 6m4 4v6m4-6v6" />
               </svg>
             </UiButton>
+            <span
+              v-if="blockedHint === row.id"
+              :id="`scale-usage-${row.id}`"
+              role="status"
+              class="absolute end-0 bottom-full z-10 mb-2 w-max max-w-56 rounded-control border border-line bg-surface px-2.5 py-1.5 text-xs text-ink shadow-sm"
+            >{{ usageHint }}</span>
           </div>
         </div>
-        <p v-if="!row.can_delete" :id="`scale-usage-${row.id}`" class="mt-1.5 ms-auto max-w-34 text-end text-xs text-ink-muted">{{ usageHint }}</p>
       </template>
       <template #details="{ row }">
         <div class="grid gap-3">
