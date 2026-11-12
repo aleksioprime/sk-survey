@@ -16,6 +16,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 STATUS_IN_PROGRESS = 'in_progress'
@@ -61,6 +62,8 @@ class Answer(IdMixin, TimestampMixin, Base):
     scale_item_id: Mapped[int | None] = mapped_column(ForeignKey('scale_items.id', ondelete='SET NULL'))
     option_id: Mapped[int | None] = mapped_column(ForeignKey('survey_question_options.id', ondelete='SET NULL'))
     is_skipped: Mapped[bool] = mapped_column(Boolean, default=False, server_default='false')
+
+    matrix_choices: Mapped[dict[str, list[int]]] = mapped_column(JSONB, default=dict, server_default='{}')
 
     response: Mapped[Response] = relationship(back_populates='answers')
     selected_options: Mapped[list['Option']] = relationship(secondary=answer_options, lazy='selectin')  # noqa: F821

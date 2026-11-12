@@ -67,8 +67,8 @@ async def test_export_xlsx(db, client):
     assert response.status_code == 200
     book = load_workbook(BytesIO(response.content))
     rows = list(book['Ответы'].values)
-    assert rows[0][:3] == ('№', 'Отправлен', 'Вопрос text')
-    assert rows[1][2] == 'Всё хорошо' and rows[1][6] == '42' and rows[1][7] == 'Да'
+    assert rows[0][:2] == ('№', 'Вопрос text')
+    assert rows[1][1] == 'Всё хорошо' and rows[1][5] == '42' and rows[1][6] == 'Да'
     assert 'Сводка' in book.sheetnames
 
 

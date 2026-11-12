@@ -151,7 +151,7 @@ async def add_question(survey_id: int, payload: QuestionIn, db: Db, user: Curren
 
 @router.put('/questions/{question_id}', response_model=QuestionOut, summary='Изменить вопрос')
 async def update_question(question_id: int, payload: QuestionIn, db: Db, user: CurrentUser) -> QuestionOut:
-    question = await service.get_question(db, question_id)
+    question = await service.get_question(db, question_id, lock=True)
     await editable_survey(db, question.survey_id, user)
     await service.update_question(db, question, payload)
     await db.commit()
@@ -162,7 +162,7 @@ async def update_question(question_id: int, payload: QuestionIn, db: Db, user: C
 
 @router.delete('/questions/{question_id}', status_code=204, summary='Удалить вопрос без ответов')
 async def delete_question(question_id: int, db: Db, user: CurrentUser) -> Response:
-    question = await service.get_question(db, question_id)
+    question = await service.get_question(db, question_id, lock=True)
     await editable_survey(db, question.survey_id, user)
     await service.delete_question(db, question)
     await db.commit()

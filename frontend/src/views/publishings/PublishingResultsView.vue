@@ -3,6 +3,8 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { errorMessage, SkeletonPage, UiBadge, UiCard } from 'sk-ui'
 import { exportUrl, getPublishing, getResults } from '@/api/surveys'
+import QuestionTypeIcon from '@/components/questions/QuestionTypeIcon.vue'
+import ChoiceBreakdown from '@/components/questions/ChoiceBreakdown.vue'
 import { QUESTION_TYPES } from '@/utils/questionTypes'
 
 const props = defineProps({ id: { type: String, required: true } })
@@ -78,13 +80,27 @@ const format = (value) => (value == null ? '—' : Number(value).toLocaleString(
 
       <div v-else class="mt-6 grid gap-4">
         <UiCard v-for="(q, index) in results.questions" :key="q.question_id">
-          <p class="text-xs text-ink-muted">
-            {{ index + 1 }} · {{ QUESTION_TYPES[q.question_type] }} · ответили {{ q.answered }}<template v-if="q.skipped">, пропустили {{ q.skipped }}</template>
-            <template v-if="!q.is_active"> · вопрос скрыт</template>
+          <p class="flex items-center gap-2 text-xs text-ink-muted">
+            <QuestionTypeIcon :type="q.question_type" class="size-4 text-brand-700" />
+            <span>
+              {{ index + 1 }} · {{ QUESTION_TYPES[q.question_type] }} · ответили {{ q.answered }}<template v-if="q.skipped">, пропустили {{ q.skipped }}</template>
+              <template v-if="!q.is_active"> · вопрос скрыт</template>
+            </span>
           </p>
           <h2 class="mt-1 font-semibold">{{ q.text }}</h2>
 
-          <ul v-if="q.options.length" class="mt-4 grid gap-2">
+          <ChoiceBreakdown v-if="q.comparison" :breakdown="q.comparison" :answered="q.answered" />
+          <p v-if="q.question_type === 'matrix_multiple'" class="mt-2 text-sm text-ink-muted">
+            В каждой строке можно было выбрать несколько вариантов.
+          </p>
+          <div v-if="q.matrix_rows.length" class="mt-4 grid gap-3">
+            <section v-for="row in q.matrix_rows" :key="row.row_id" class="rounded-control border border-line p-3 sm:p-4">
+              <h3 class="font-medium">{{ row.title }}</h3>
+              <p class="mt-1 text-xs text-ink-muted">Ответили на строку: {{ row.answered }}</p>
+              <ChoiceBreakdown :breakdown="row" :answered="row.answered" />
+            </section>
+          </div>
+          <ul v-if="q.options.length && !q.comparison" class="mt-4 grid gap-2">
             <li v-for="option in q.options" :key="option.title" class="grid gap-1">
               <div class="flex justify-between gap-3 text-sm">
                 <span>{{ option.title }}</span>

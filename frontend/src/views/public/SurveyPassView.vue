@@ -8,9 +8,12 @@ import { useRoute } from 'vue-router'
 import { skolstreamLoginUrl } from '@/api/auth'
 import { BrandMark, errorMessage, SchoolFooter, SkeletonPage, UiButton, UiCard } from 'sk-ui'
 import {
+  fetchPreview,
   fetchPublicSurvey,
   fetchResponse,
   forgetResponseToken,
+  hasCompleted,
+  markCompleted,
   rememberResponseToken,
   saveAnswer,
   savedResponseToken,
@@ -20,9 +23,13 @@ import {
 import QuestionField from '@/components/questions/QuestionField.vue'
 import { pageTitle } from '@/brand'
 import { paragraphs } from '@/utils/richText'
+import { MATRIX_TYPES } from '@/utils/questionTypes'
 import { seededShuffle } from '@/utils/shuffle'
 
-const props = defineProps({ token: { type: String, required: true } })
+const props = defineProps({
+  token: { type: String, required: true },
+  preview: { type: Boolean, default: false },
+})
 const route = useRoute()
 
 const survey = ref(null)
@@ -38,6 +45,8 @@ const busy = ref(false)
 const submitError = ref('')
 const thankYou = ref('')
 const timers = new Map()
+const pending = new Map()
+const inFlight = new Map()
 
 const emptyAnswer = () => ({
   text_value: null,
@@ -48,6 +57,7 @@ const emptyAnswer = () => ({
   option_id: null,
   option_ids: [],
   ranking: [],
+  matrix_choices: {},
   is_skipped: false,
 })
 
@@ -70,7 +80,7 @@ const current = computed(() => pages.value[page.value])
 const isLast = computed(() => page.value === pages.value.length - 1)
 const progress = computed(() => {
   const total = survey.value?.questions.length || 0
-  const done = survey.value?.questions.filter((q) => isAnswered(answers[q.id])).length || 0
+  const done = survey.value?.questions.filter((q) => isAnswered(q, answers[q.id])).length || 0
   return total ? Math.round((done * 100) / total) : 0
 })
 
@@ -78,11 +88,18 @@ function optionsFor(question) {
   return question.is_options_shuffled ? seededShuffle(question.options, `${responseId.value}${question.id}`) : question.options
 }
 
-function isAnswered(answer) {
+const hasMatrix = computed(() => current.value?.questions.some((q) => MATRIX_TYPES.includes(q.question_type)))
+
+function isAnswered(question, answer) {
   if (!answer) return false
+  if (answer.is_skipped) return !question.is_required
+  if (MATRIX_TYPES.includes(question.question_type)) {
+    const choices = answer.matrix_choices || {}
+    const selected = (row) => Object.hasOwn(choices, row.id) && choices[row.id].length > 0
+    return question.is_required ? question.matrix_rows.every(selected) : question.matrix_rows.some(selected)
+  }
   return Boolean(
-    answer.is_skipped ||
-      answer.text_value?.trim() ||
+    answer.text_value?.trim() ||
       answer.rich_text_value ||
       answer.number_value != null ||
       answer.boolean_value != null ||
@@ -108,7 +125,7 @@ function applyState(state) {
 
 onMounted(async () => {
   try {
-    survey.value = await fetchPublicSurvey(props.token)
+    survey.value = await (props.preview ? fetchPreview(props.token) : fetchPublicSurvey(props.token))
   } catch (e) {
     loadError.value = errorMessage(e, 'Опрос не найден')
     stage.value = 'error'
@@ -119,7 +136,17 @@ onMounted(async () => {
     stage.value = 'login'
     return
   }
-  const saved = savedResponseToken(props.token)
+  if (!survey.value.questions.length) {
+    loadError.value = 'В опросе пока нет доступных вопросов.'
+    stage.value = 'error'
+    return
+  }
+  if (!props.preview && survey.value.is_anonymous && hasCompleted(props.token)) {
+    thankYou.value = survey.value.thank_you_text
+    stage.value = 'done'
+    return
+  }
+  const saved = props.preview ? null : savedResponseToken(props.token)
   if (saved) {
     try {
       const state = await fetchResponse(saved)
@@ -127,10 +154,16 @@ onMounted(async () => {
       applyState(state)
       if (state.status === 'submitted') {
         thankYou.value = survey.value.thank_you_text
+        if (survey.value.is_anonymous) markCompleted(props.token)
         stage.value = 'done'
         return
       }
-    } catch {
+    } catch (e) {
+      if (e?.response?.status !== 401) {
+        loadError.value = errorMessage(e)
+        stage.value = 'error'
+        return
+      }
       forgetResponseToken(props.token)
     }
   }
@@ -142,7 +175,9 @@ onBeforeUnmount(() => timers.forEach((timer) => clearTimeout(timer)))
 async function begin() {
   busy.value = true
   try {
-    if (!responseToken.value) {
+    if (props.preview) {
+      applyState({ response_id: 'preview', answers: [] })
+    } else if (!responseToken.value) {
       const started = await startResponse(props.token)
       responseToken.value = started.response_token
       rememberResponseToken(props.token, started.response_token)
@@ -165,27 +200,49 @@ async function begin() {
 function onChange(question, value) {
   answers[question.id] = value
   errors[question.id] = ''
+  if (props.preview) return
+  pending.set(question.id, value)
   clearTimeout(timers.get(question.id))
   timers.set(question.id, setTimeout(() => persist(question.id), 500))
 }
 
-async function persist(questionId) {
+function persist(questionId) {
+  clearTimeout(timers.get(questionId))
   timers.delete(questionId)
-  saveState[questionId] = 'saving'
-  try {
-    await saveAnswer(responseToken.value, questionId, answers[questionId])
-    saveState[questionId] = 'saved'
-  } catch (e) {
-    saveState[questionId] = 'error'
-    errors[questionId] = errorMessage(e, 'Ответ не сохранился. Попробуйте ещё раз.')
+  if (inFlight.has(questionId)) return inFlight.get(questionId)
+
+  const request = savePending(questionId).finally(() => inFlight.delete(questionId))
+  inFlight.set(questionId, request)
+  return request
+}
+
+async function savePending(questionId) {
+  while (pending.has(questionId)) {
+    const value = pending.get(questionId)
+    saveState[questionId] = 'saving'
+    try {
+      await saveAnswer(responseToken.value, questionId, value)
+    } catch (e) {
+      saveState[questionId] = 'error'
+      errors[questionId] = errorMessage(e, 'Ответ не сохранился. Попробуйте ещё раз.')
+      return false
+    }
+    if (pending.get(questionId) === value) pending.delete(questionId)
   }
+  errors[questionId] = ''
+  saveState[questionId] = 'saved'
+  return true
 }
 
 async function flush() {
-  const pending = [...timers.keys()]
-  pending.forEach((id) => clearTimeout(timers.get(id)))
-  await Promise.all(pending.map(persist))
-  return pending.every((id) => saveState[id] !== 'error')
+  const ids = new Set([...pending.keys(), ...inFlight.keys()])
+  const saved = await Promise.all([...ids].map(persist))
+  if (saved.every(Boolean) && !pending.size) return true
+  const first = pending.keys().next().value
+  const target = pages.value.findIndex((part) => part.questions.some((q) => q.id === first))
+  if (target >= 0) page.value = target
+  submitError.value = 'Некоторые ответы не сохранились. Повторите действие, чтобы сохранить их снова.'
+  return false
 }
 
 function skip(question) {
@@ -197,8 +254,10 @@ function checkPage() {
   for (const question of current.value.questions) {
     const answer = answers[question.id]
     const count = (answer?.option_ids?.length || 0) + (answer?.ranking?.length || 0)
-    if (question.is_required && !isAnswered(answer)) {
-      errors[question.id] = 'Это обязательный вопрос'
+    if (question.is_required && !isAnswered(question, answer)) {
+      errors[question.id] = MATRIX_TYPES.includes(question.question_type)
+        ? 'Выберите ответ в каждой строке'
+        : 'Это обязательный вопрос'
       ok = false
     } else if (question.min_selections && count && count < question.min_selections) {
       errors[question.id] = `Выберите не меньше ${question.min_selections}`
@@ -210,9 +269,16 @@ function checkPage() {
 }
 
 async function goNext() {
-  if (!checkPage() || !(await flush())) return
-  page.value += 1
-  window.scrollTo({ top: 0 })
+  if (busy.value || !checkPage()) return
+  busy.value = true
+  submitError.value = ''
+  try {
+    if (!(await flush())) return
+    page.value += 1
+    window.scrollTo({ top: 0 })
+  } finally {
+    busy.value = false
+  }
 }
 
 function goBack() {
@@ -222,13 +288,21 @@ function goBack() {
 
 async function submit() {
   submitError.value = ''
-  if (!checkPage() || !(await flush())) return
+  if (busy.value || !checkPage()) return
   busy.value = true
   try {
+    if (!(await flush())) return
+    if (props.preview) {
+      thankYou.value = survey.value.thank_you_text
+      stage.value = 'done'
+      window.scrollTo({ top: 0 })
+      return
+    }
     const result = await submitResponse(responseToken.value)
     thankYou.value = result.thank_you_text
     stage.value = 'done'
-    forgetResponseToken(props.token)
+    if (survey.value.is_anonymous) markCompleted(props.token)
+    else forgetResponseToken(props.token)
     window.scrollTo({ top: 0 })
   } catch (e) {
     const missing = e?.response?.data?.detail?.question_ids
@@ -246,8 +320,11 @@ async function submit() {
 
 <template>
   <div class="flex min-h-dvh flex-col">
-    <div class="mx-auto w-full max-w-2xl flex-1 px-4 py-8 sm:py-12">
+    <div class="mx-auto w-full flex-1 px-4 py-8 sm:py-12" :class="hasMatrix && stage === 'questions' ? 'max-w-5xl' : 'max-w-2xl'">
       <BrandMark class="mb-8" />
+      <p v-if="preview" class="mb-5 rounded-control bg-brand-50 px-4 py-3 text-sm font-medium text-brand-700">
+        Предпросмотр. Ответы не сохраняются.
+      </p>
       <SkeletonPage v-if="stage === 'loading'" />
 
       <UiCard v-else-if="stage === 'error'" class="p-6">
@@ -277,11 +354,11 @@ async function submit() {
               {{ paragraph }}
             </p>
           </div>
-          <p class="mt-4 text-sm text-ink-muted">
-            Вопросов: {{ survey.questions.length }}.
-            <template v-if="survey.is_anonymous">Опрос анонимный: ответы не связаны с вашим именем.</template>
-            Ответы сохраняются сразу — можно прерваться и продолжить позже на этом устройстве.
-          </p>
+          <div class="mt-4 space-y-1 text-sm text-ink-muted">
+            <p>Вопросов: {{ survey.questions.length }}.</p>
+            <p v-if="survey.is_anonymous">Опрос анонимный: ответы не связаны с вашим именем.</p>
+            <p v-if="!preview">Ответы сохраняются автоматически. Можно продолжить позже на этом устройстве.</p>
+          </div>
           <p v-if="loadError" role="alert" class="mt-4 rounded-control bg-red-100 px-3 py-2 text-sm text-red-800">{{ loadError }}</p>
           <UiButton class="mt-6 w-full sm:w-auto" variant="primary" :loading="busy" @click="begin">
             {{ responseToken ? 'Продолжить' : 'Начать' }}
@@ -317,6 +394,7 @@ async function submit() {
               </h3>
               <p v-if="question.description" class="mt-1 whitespace-pre-line text-sm text-ink-muted">{{ question.description }}</p>
               <QuestionField
+                :disabled="busy"
                 class="mt-4"
                 :model-value="answers[question.id]"
                 :question="question"
@@ -329,6 +407,7 @@ async function submit() {
                 <button
                   v-if="!question.is_required"
                   type="button"
+                  :disabled="busy"
                   class="hover:text-ink"
                   :class="answers[question.id]?.is_skipped ? 'font-medium text-brand-700' : ''"
                   @click="skip(question)"
@@ -345,16 +424,16 @@ async function submit() {
 
           <p v-if="submitError" role="alert" class="mt-4 rounded-control bg-red-100 px-3 py-2 text-sm text-red-800">{{ submitError }}</p>
           <div class="mt-6 flex justify-between gap-3">
-            <UiButton v-if="page > 0" @click="goBack">Назад</UiButton>
+            <UiButton v-if="page > 0" :disabled="busy" @click="goBack">Назад</UiButton>
             <span v-else />
-            <UiButton v-if="!isLast" variant="primary" @click="goNext">Далее</UiButton>
-            <UiButton v-else variant="primary" :loading="busy" @click="submit">Отправить ответы</UiButton>
+            <UiButton v-if="!isLast" variant="primary" :loading="busy" @click="goNext">Далее</UiButton>
+            <UiButton v-else variant="primary" :loading="busy" @click="submit">{{ preview ? 'Завершить предпросмотр' : 'Отправить ответы' }}</UiButton>
           </div>
         </section>
 
         <UiCard v-else-if="stage === 'done'" class="p-6 text-center">
           <div class="mx-auto grid size-12 place-items-center rounded-full bg-brand-100 text-2xl text-brand-700" aria-hidden="true">✓</div>
-          <h2 class="mt-4 text-xl font-bold">Ответы отправлены</h2>
+          <h2 class="mt-4 text-xl font-bold">{{ preview ? 'Предпросмотр завершён' : 'Ответы отправлены' }}</h2>
           <div class="prose-text mt-3 text-ink-muted">
             <p v-for="(paragraph, index) in paragraphs(thankYou || 'Спасибо за участие!')" :key="index" class="whitespace-pre-line">
               {{ paragraph }}

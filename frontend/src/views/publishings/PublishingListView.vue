@@ -18,6 +18,7 @@ onMounted(async () => {
   }
 })
 
+const status = { open: 'Идёт', scheduled: 'Запланирована', closed: 'Закрыта' }
 const date = (value) => new Date(value).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })
 </script>
 
@@ -39,7 +40,7 @@ const date = (value) => new Date(value).toLocaleDateString('ru-RU', { day: 'nume
             <p class="font-semibold">{{ p.title }}</p>
             <p class="mt-1 text-sm text-ink-muted">с {{ date(p.created_at) }} · ответов: {{ p.submitted_count }}</p>
           </div>
-          <UiBadge :tone="p.is_active ? 'success' : 'neutral'">{{ p.is_active ? 'Идёт' : 'Закрыта' }}</UiBadge>
+          <UiBadge :tone="p.status === 'open' ? 'success' : 'neutral'">{{ status[p.status] }}</UiBadge>
         </RouterLink>
       </li>
     </ul>

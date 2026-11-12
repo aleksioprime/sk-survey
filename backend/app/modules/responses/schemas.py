@@ -1,8 +1,9 @@
 from datetime import datetime
+from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.modules.surveys.schemas import RangeOut, ScaleOut, SectionOut
+from app.modules.surveys.schemas import MatrixRow, RangeOut, ScaleOut, SectionOut
 
 
 class ORMModel(BaseModel):
@@ -30,6 +31,7 @@ class PublicQuestion(ORMModel):
     is_options_shuffled: bool
     options: list[PublicOption]
     ranges: list[RangeOut]
+    matrix_rows: list[MatrixRow]
 
 
 class PublicSurvey(BaseModel):
@@ -54,6 +56,9 @@ class AnswerIn(BaseModel):
     option_id: int | None = None
     option_ids: list[int] = Field(default=[], max_length=200)
     ranking: list[int] = Field(default=[], max_length=200, description='ID вариантов по порядку, первый — главный')
+    matrix_choices: dict[str, Annotated[list[int], Field(min_length=1, max_length=50)]] = Field(
+        default={}, max_length=50
+    )
     is_skipped: bool = False
 
 
@@ -67,6 +72,7 @@ class AnswerOut(ORMModel):
     option_id: int | None
     option_ids: list[int]
     ranking_ids: list[int]
+    matrix_choices: dict[str, list[int]]
     is_skipped: bool
 
 

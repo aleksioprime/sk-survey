@@ -24,7 +24,7 @@ from app.modules.responses.schemas import (
     ResponseState,
     StartResult,
 )
-from app.modules.surveys.models import SCALE_GENERATED, Publishing, Question, Scale, Survey
+from app.modules.surveys.models import MATRIX_TYPES, SCALE_GENERATED, Publishing, Question, Scale, Section, Survey
 from app.modules.surveys.schemas import ScaleOut, SectionOut
 
 RICH_TEXT_TAGS = {'p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'ul', 'ol', 'li', 'blockquote', 'a', 'h3', 'h4'}
@@ -49,14 +49,21 @@ async def open_publishing(db: AsyncSession, token: str) -> Publishing:
     now = now_utc()
     if publishing.opens_at and now < publishing.opens_at:
         raise HTTPException(status.HTTP_403_FORBIDDEN, 'Опрос ещё не начался')
-    if publishing.closes_at and now > publishing.closes_at:
+    if publishing.closes_at and now >= publishing.closes_at:
         raise HTTPException(status.HTTP_410_GONE, 'Опрос завершён')
     return publishing
 
 
 async def active_questions(db: AsyncSession, survey_id: int) -> list[Question]:
+    visible = select(Section.id).where(Section.survey_id == survey_id, Section.is_active.is_(True))
     rows = await db.scalars(
-        select(Question).where(Question.survey_id == survey_id, Question.is_active.is_(True)).order_by(Question.order)
+        select(Question)
+        .where(
+            Question.survey_id == survey_id,
+            Question.is_active.is_(True),
+            Question.section_id.is_(None) | Question.section_id.in_(visible),
+        )
+        .order_by(Question.order)
     )
     return list(rows)
 
@@ -64,9 +71,19 @@ async def active_questions(db: AsyncSession, survey_id: int) -> list[Question]:
 async def public_survey(db: AsyncSession, publishing: Publishing, user: User | None) -> PublicSurvey:
     survey: Survey = publishing.survey
     requires_login = not publishing.is_anonymous and user is None
+    return await survey_form(db, survey, publishing.title, publishing.is_anonymous, requires_login)
+
+
+async def survey_form(
+    db: AsyncSession,
+    survey: Survey,
+    publishing_title: str = '',
+    is_anonymous: bool = True,
+    requires_login: bool = False,
+) -> PublicSurvey:
     result = PublicSurvey(
-        publishing_title=publishing.title,
-        is_anonymous=publishing.is_anonymous,
+        publishing_title=publishing_title,
+        is_anonymous=is_anonymous,
         requires_login=requires_login,
         title=survey.title,
         description=survey.description,
@@ -152,8 +169,14 @@ async def save_answer(db: AsyncSession, response: Response, question_id: int, da
         raise HTTPException(status.HTTP_409_CONFLICT, 'Ответы уже отправлены')
     publishing = await db.get(Publishing, response.publishing_id)
     await open_publishing(db, publishing.public_token)
-    question = await db.get(Question, question_id)
-    if question is None or question.survey_id != publishing.survey_id or not question.is_active:
+    question = await db.get(Question, question_id, with_for_update={'read': True})
+    section = await db.get(Section, question.section_id) if question and question.section_id else None
+    if (
+        question is None
+        or question.survey_id != publishing.survey_id
+        or not question.is_active
+        or (section and not section.is_active)
+    ):
         raise HTTPException(status.HTTP_404_NOT_FOUND, 'Вопрос не найден')
 
     answer = await db.scalar(select(Answer).where(Answer.response_id == response.id, Answer.question_id == question_id))
@@ -176,6 +199,7 @@ async def _apply(db: AsyncSession, question: Question, answer: Answer, data: Ans
         setattr(answer, field, None)
     answer.selected_options = []
     answer.ranking = []
+    answer.matrix_choices = {}
     answer.is_skipped = data.is_skipped and not question.is_required
     if answer.is_skipped:
         return
@@ -197,6 +221,16 @@ async def _apply(db: AsyncSession, question: Question, answer: Answer, data: Ans
         if data.option_id is not None and data.option_id not in options:
             raise AnswerError('Такого варианта нет')
         answer.option_id = data.option_id
+    elif kind in MATRIX_TYPES:
+        rows = {row['id'] for row in question.matrix_rows}
+        if data.matrix_choices.keys() - rows:
+            raise AnswerError('Такой строки нет')
+        for selected in data.matrix_choices.values():
+            if set(selected) - options.keys() or len(set(selected)) != len(selected):
+                raise AnswerError('Недопустимый вариант матрицы')
+            if kind == 'matrix_single' and len(selected) != 1:
+                raise AnswerError('Выберите один вариант в каждой строке')
+        answer.matrix_choices = data.matrix_choices
     elif kind == 'multiple_choice':
         chosen = list(dict.fromkeys(data.option_ids))
         if set(chosen) - set(options):
@@ -248,11 +282,10 @@ def _check_range(value: float, low: float | None, high: float | None) -> None:
 
 
 def is_answered(answer: Answer | None) -> bool:
-    if answer is None:
+    if answer is None or answer.is_skipped:
         return False
     return bool(
-        answer.is_skipped
-        or answer.text_value
+        answer.text_value
         or answer.rich_text_value
         or answer.number_value is not None
         or answer.boolean_value is not None
@@ -260,6 +293,7 @@ def is_answered(answer: Answer | None) -> bool:
         or answer.option_id
         or answer.selected_options
         or answer.ranking
+        or answer.matrix_choices
     )
 
 
@@ -273,7 +307,10 @@ async def submit(db: AsyncSession, response: Response) -> Publishing:
     missing = []
     for question in await active_questions(db, publishing.survey_id):
         answer = by_question.get(question.id)
-        if question.is_required and not is_answered(answer):
+        complete = is_answered(answer)
+        if question.question_type in MATRIX_TYPES:
+            complete = bool(answer) and all(row['id'] in answer.matrix_choices for row in question.matrix_rows)
+        if question.is_required and not complete:
             missing.append(question.id)
         elif question.min_selections and answer and not answer.is_skipped:
             # Выбор или порядок начат, но вариантов меньше минимума
