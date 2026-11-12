@@ -8,7 +8,7 @@ from fastapi import HTTPException, status
 from sk_common.people.models import Person, User
 from sk_common.people.service import ensure_user
 from sk_common.security import now_utc
-from sqlalchemy import func, or_, select
+from sqlalchemy import exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -380,8 +380,13 @@ async def _check_question_refs(db: AsyncSession, survey_id: int, data: QuestionI
         section = await db.get(Section, data.section_id)
         if section is None or section.survey_id != survey_id:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, 'Раздел из другого опроса')
-    if data.scale_id is not None and await db.get(Scale, data.scale_id) is None:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, 'Шкала не найдена')
+    if data.scale_id is not None:
+        # Не даём удалить шкалу между проверкой и сохранением ссылки на неё.
+        scale_id = await db.scalar(
+            select(Scale.id).where(Scale.id == data.scale_id).with_for_update(read=True, key_share=True)
+        )
+        if scale_id is None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, 'Шкала не найдена')
 
 
 async def add_question(db: AsyncSession, survey: Survey, data: QuestionIn) -> Question:
@@ -489,6 +494,15 @@ async def scale_usage(db: AsyncSession, user: User) -> dict[int, list[ScaleSurve
     for scale_id, survey_id, title, is_active in (await db.execute(query)).all():
         usage.setdefault(scale_id, []).append(ScaleSurveyUsage(id=survey_id, title=title, is_active=is_active))
     return usage
+
+
+async def delete_scale(db: AsyncSession, scale_id: int) -> None:
+    scale = await db.get(Scale, scale_id, with_for_update=True)
+    if scale is None:
+        raise not_found('Шкала не найдена')
+    if await db.scalar(select(exists().where(Question.scale_id == scale_id))):
+        raise conflict('Шкала уже используется в вопросах и не может быть удалена.')
+    await db.delete(scale)
 
 
 async def save_scale(db: AsyncSession, data: ScaleIn, scale: Scale | None = None) -> Scale:

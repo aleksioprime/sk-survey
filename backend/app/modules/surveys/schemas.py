@@ -73,6 +73,7 @@ class ScaleOut(ORMModel):
     step: int
     items: list[ScaleItemOut]
     used_in: list[ScaleSurveyUsage] = []
+    can_delete: bool = False
 
 
 # --- Вопросы --------------------------------------------------------------------------------

@@ -1,10 +1,10 @@
 from fastapi import APIRouter, HTTPException, Response, status
 from sk_common.audit import record
 from sk_common.deps import CurrentUser, Db
-from sqlalchemy import select
+from sqlalchemy import exists, select
 
 from app.modules.surveys import service
-from app.modules.surveys.models import ROLE_EDITOR, Publishing, Scale
+from app.modules.surveys.models import ROLE_EDITOR, Publishing, Question, Scale
 from app.modules.surveys.permissions import (
     can_create_surveys,
     editable_survey,
@@ -197,19 +197,25 @@ async def list_scales(
         _require_creator(user)
     else:
         await editable_survey(db, survey_id, user)
-    scales = await db.scalars(select(Scale).order_by(Scale.title))
-    usage = await service.scale_usage(db, user) if include_usage else {}
-    return [ScaleOut.model_validate(scale).model_copy(update={'used_in': usage.get(scale.id, [])}) for scale in scales]
+    query = select(Scale).order_by(Scale.title)
+    if not include_usage:
+        return [ScaleOut.model_validate(scale) for scale in await db.scalars(query)]
+    usage = await service.scale_usage(db, user)
+    scales = await db.execute(query.add_columns(~exists().where(Question.scale_id == Scale.id)))
+    return [
+        ScaleOut.model_validate(scale).model_copy(update={'used_in': usage.get(scale.id, []), 'can_delete': can_delete})
+        for scale, can_delete in scales
+    ]
 
 
 @router.post('/scales', response_model=ScaleOut, status_code=201, summary='Создать шкалу')
-async def create_scale(payload: ScaleIn, db: Db, user: CurrentUser) -> Scale:
+async def create_scale(payload: ScaleIn, db: Db, user: CurrentUser) -> ScaleOut:
     _require_creator(user)
     scale = await service.save_scale(db, payload)
     record(db, 'scale.create', 'scale', scale.id, user.id)
     await db.commit()
     await db.refresh(scale, ['items'])
-    return scale
+    return ScaleOut.model_validate(scale).model_copy(update={'can_delete': True})
 
 
 @router.put('/scales/{scale_id}', response_model=ScaleOut, summary='Изменить шкалу')
@@ -223,6 +229,15 @@ async def update_scale(scale_id: int, payload: ScaleIn, db: Db, user: CurrentUse
     await db.commit()
     await db.refresh(scale, ['items'])
     return scale
+
+
+@router.delete('/scales/{scale_id}', status_code=204, summary='Удалить неиспользуемую шкалу')
+async def delete_scale(scale_id: int, db: Db, user: CurrentUser) -> Response:
+    _require_creator(user)
+    await service.delete_scale(db, scale_id)
+    record(db, 'scale.delete', 'scale', scale_id, user.id)
+    await db.commit()
+    return Response(status_code=204)
 
 
 # --- Публикации -----------------------------------------------------------------------------

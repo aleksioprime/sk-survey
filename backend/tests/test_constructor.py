@@ -241,11 +241,33 @@ async def test_scale_usage_is_limited_to_surveys_the_user_can_edit(db, client):
     built = await build_survey(client)
     survey = built['survey']
     scale_id = built['questions']['scale']['scale_id']
+    scale_url = f'/api/v1/scales/{scale_id}'
     scales = (await client.get('/api/v1/scales', params={'include_usage': True})).json()
     assert next(scale for scale in scales if scale['id'] == scale_id)['used_in'] == [
         {'id': survey['id'], 'title': survey['title'], 'is_active': True}
     ]
+    assert (await client.patch(f'/api/v1/surveys/{survey["id"]}', json={'is_active': False})).status_code == 200
     async with other_client(client) as stranger:
         await login_employee(db, stranger, email='other-scales@example.org', last_name='Другой')
         visible = (await stranger.get('/api/v1/scales', params={'include_usage': True})).json()
-        assert next(scale for scale in visible if scale['id'] == scale_id)['used_in'] == []
+        scale = next(scale for scale in visible if scale['id'] == scale_id)
+        assert scale['used_in'] == [] and scale['can_delete'] is False
+        assert (await stranger.delete(scale_url)).status_code == 409
+    assert (await client.delete(scale_url)).status_code == 409
+    saved = (await client.get(f'/api/v1/surveys/{survey["id"]}')).json()
+    assert next(q for q in saved['questions'] if q['question_type'] == 'scale')['scale_id'] == scale_id
+
+
+async def test_delete_unused_scale(db, client):
+    await login_employee(db, client)
+    created = await client.post('/api/v1/scales', json={'title': 'Неиспользуемая шкала'})
+    assert created.status_code == 201
+    scale = created.json()
+    assert scale['can_delete'] is True
+    url = f'/api/v1/scales/{scale["id"]}'
+    async with other_client(client) as student:
+        await login_as(db, student, email='student@example.org')
+        assert (await student.delete(url)).status_code == 403
+    assert (await client.delete(url)).status_code == 204
+    assert (await client.delete(url)).status_code == 404
+    assert all(row['id'] != scale['id'] for row in (await client.get('/api/v1/scales')).json())

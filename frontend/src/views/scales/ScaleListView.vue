@@ -1,8 +1,8 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
-import { errorMessage, SkeletonTable, UiButton, UiDialog, UiTable } from 'sk-ui'
-import { listScales } from '@/api/surveys'
+import { errorMessage, SkeletonTable, UiButton, UiConfirm, UiDialog, UiTable } from 'sk-ui'
+import { deleteScale, listScales } from '@/api/surveys'
 import SurveyArchiveBadge from '@/components/SurveyArchiveBadge.vue'
 import ScaleEditor from '@/components/editor/ScaleEditor.vue'
 
@@ -11,6 +11,8 @@ const loading = ref(true)
 const error = ref('')
 const editor = ref(null)
 const saving = ref(false)
+const removal = ref(null)
+const removing = ref(false)
 const columns = [
   { key: 'title', label: 'Название', primary: true, sortable: true },
   { key: 'type', label: 'Тип', sortable: true },
@@ -49,6 +51,27 @@ function addScale(scale) {
   editor.value = null
 }
 
+async function confirmRemoval() {
+  if (!removal.value || removing.value) return
+  const id = removal.value.id
+  removing.value = true
+  error.value = ''
+  try {
+    await deleteScale(id)
+    scales.value = scales.value.filter((scale) => scale.id !== id)
+  } catch (e) {
+    error.value = errorMessage(e)
+    if (e.response?.status === 409) {
+      scales.value = scales.value.map((scale) => scale.id === id ? { ...scale, can_delete: false } : scale)
+    } else if (e.response?.status === 404) {
+      scales.value = scales.value.filter((scale) => scale.id !== id)
+    }
+  } finally {
+    removing.value = false
+    removal.value = null
+  }
+}
+
 function numericPreview(scale) {
   const count = Math.floor((scale.max_value - scale.min_value) / scale.step) + 1
   const values = Array.from({ length: Math.min(12, count) }, (_, i) => scale.min_value + i * scale.step)
@@ -75,10 +98,23 @@ function numericPreview(scale) {
       </template>
       <template #cell-usage="{ row }">
         <span v-if="row.used_in?.length">{{ row.used_in.length }}</span>
+        <span v-else-if="row.can_delete === false" class="text-ink-muted">Используется</span>
         <span v-else class="text-ink-muted">-</span>
       </template>
       <template #cell-actions="{ row }">
-        <UiButton size="sm" @click="openEditor(row)">Копировать</UiButton>
+        <div class="flex flex-wrap gap-2">
+          <UiButton size="sm" @click="openEditor(row)">Копировать</UiButton>
+          <UiButton
+            v-if="row.can_delete"
+            size="sm"
+            variant="ghost"
+            class="text-red-700"
+            :aria-label="`Удалить шкалу ${row.title}`"
+            @click="removal = row"
+          >
+            Удалить
+          </UiButton>
+        </div>
       </template>
       <template #details="{ row }">
         <div class="grid gap-3">
@@ -107,5 +143,16 @@ function numericPreview(scale) {
     <UiDialog :open="!!editor" :title="editor?.source ? 'Копия шкалы' : 'Новая шкала'" :busy="saving" @update:open="closeEditor">
       <ScaleEditor v-if="editor" v-model:saving="saving" :source="editor.source" embedded @created="addScale" @cancel="closeEditor" />
     </UiDialog>
+    <UiConfirm
+      :open="!!removal"
+      title="Удалить шкалу?"
+      confirm-label="Удалить"
+      variant="danger"
+      :loading="removing"
+      @update:open="removal = null"
+      @confirm="confirmRemoval"
+    >
+      <span class="wrap-anywhere">Шкала «{{ removal?.title }}» будет удалена из справочника.</span>
+    </UiConfirm>
   </section>
 </template>

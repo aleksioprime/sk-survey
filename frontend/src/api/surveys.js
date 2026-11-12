@@ -27,6 +27,7 @@ export const deleteQuestion = (id) => http.delete(`/v1/questions/${id}`)
 export const listScales = (params) => get('/v1/scales', { params })
 export const createScale = (body) => post('/v1/scales', body)
 export const updateScale = (id, body) => put(`/v1/scales/${id}`, body)
+export const deleteScale = (id) => http.delete(`/v1/scales/${id}`)
 
 export const cabinetPublishings = (surveyId) => get('/v1/publishings', { params: { survey_id: surveyId } })
 export const surveyPublishings = (surveyId) => get(`/v1/surveys/${surveyId}/publishings`)
