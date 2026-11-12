@@ -73,7 +73,6 @@ const currentGroup = computed(() => groups.value.find((group) => (
   currentQuestion.value ? group.questions.includes(currentQuestion.value) : (group.section?.id ?? null) === sectionId.value
 )))
 const currentSection = computed(() => currentGroup.value?.section)
-const questionIndex = computed(() => currentGroup.value?.questions.indexOf(currentQuestion.value) ?? -1)
 const position = computed(() => orderedQuestions.value.indexOf(currentQuestion.value) + 1)
 const sectionDirty = computed(() => sectionDraft.value && (
   sectionDraft.value.title !== (currentSection.value?.title || '')
@@ -245,6 +244,7 @@ function cancelQuestion() {
 }
 
 async function moveQuestion(question, delta) {
+  if (saving.value) return
   const list = survey.value.questions
   const group = list.filter((q) => (q.section_id ?? null) === (question.section_id ?? null))
   const index = group.indexOf(question)
@@ -474,25 +474,55 @@ const textarea = 'rounded-control border border-line bg-surface p-3 outline-none
               </button>
               <p v-else-if="group.questions.length && survey.sections.length" class="px-2 pt-2 pb-1 text-xs font-semibold text-ink-muted">Без раздела</p>
 
-              <button
-                v-for="question in group.questions"
+              <div
+                v-for="(question, index) in group.questions"
                 :key="question.id"
-                type="button"
-                class="mt-1 flex w-full items-start gap-2.5 rounded-control px-2.5 py-2 text-left hover:bg-canvas"
+                role="group"
+                :aria-label="question.text"
+                class="mt-1 flex min-w-0 items-center rounded-control hover:bg-canvas"
                 :class="selected === question.id ? 'bg-brand-50 text-brand-700 ring-1 ring-inset ring-brand-200 hover:bg-brand-50' : ''"
-                :aria-current="selected === question.id ? 'true' : undefined"
-                :title="question.text"
-                :disabled="saving"
-                @click="chooseQuestion(question.id)"
               >
-                <QuestionTypeIcon :type="question.question_type" class="mt-0.5 text-brand-700" />
-                <span class="min-w-0">
-                  <span class="line-clamp-2 break-words text-sm font-medium">{{ question.text }}<span v-if="question.is_required" class="text-red-600" aria-label="Обязательный"> *</span></span>
-                  <span class="mt-0.5 block text-xs text-ink-muted">
-                    {{ QUESTION_TYPES[question.question_type] }}<template v-if="!question.is_active"> · Скрыт</template>
+                <button
+                  type="button"
+                  class="flex min-w-0 flex-1 items-start gap-2 rounded-control py-2 pr-1 pl-2.5 text-left focus-visible:outline-2 focus-visible:outline-brand-600"
+                  :aria-current="selected === question.id ? 'true' : undefined"
+                  :title="question.text"
+                  :disabled="saving"
+                  @click="chooseQuestion(question.id)"
+                >
+                  <QuestionTypeIcon :type="question.question_type" class="mt-0.5 text-brand-700" />
+                  <span class="min-w-0">
+                    <span class="line-clamp-2 break-words text-sm font-medium">{{ question.text }}<span v-if="question.is_required" class="text-red-600" aria-label="Обязательный"> *</span></span>
+                    <span class="mt-0.5 block text-xs text-ink-muted">
+                      {{ QUESTION_TYPES[question.question_type] }}<template v-if="!question.is_active"> · Скрыт</template>
+                    </span>
                   </span>
-                </span>
-              </button>
+                </button>
+                <div class="grid shrink-0 pr-1 text-sm text-ink-muted">
+                  <button
+                    type="button"
+                    class="grid size-7 place-items-center rounded-control hover:bg-brand-100 focus-visible:outline-2 focus-visible:outline-brand-600 disabled:opacity-30 disabled:hover:bg-transparent"
+                    :disabled="index === 0"
+                    :aria-disabled="saving || undefined"
+                    aria-label="Вопрос выше"
+                    title="Переместить выше"
+                    @click="moveQuestion(question, -1)"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    class="grid size-7 place-items-center rounded-control hover:bg-brand-100 focus-visible:outline-2 focus-visible:outline-brand-600 disabled:opacity-30 disabled:hover:bg-transparent"
+                    :disabled="index === group.questions.length - 1"
+                    :aria-disabled="saving || undefined"
+                    aria-label="Вопрос ниже"
+                    title="Переместить ниже"
+                    @click="moveQuestion(question, 1)"
+                  >
+                    ↓
+                  </button>
+                </div>
+              </div>
             </div>
             <p v-if="!orderedQuestions.length && !survey.sections.length" class="px-2 py-3 text-sm text-ink-muted">Вопросов пока нет.</p>
           </nav>
@@ -509,11 +539,7 @@ const textarea = 'rounded-control border border-line bg-surface p-3 outline-none
               </h2>
               <p v-if="questionDirty" class="text-xs text-ink-muted">Есть несохранённые изменения</p>
             </div>
-            <div v-if="currentQuestion" class="flex flex-wrap gap-1">
-              <UiButton size="sm" variant="ghost" :disabled="saving || questionIndex <= 0" aria-label="Вопрос выше" title="Вопрос выше" @click="moveQuestion(currentQuestion, -1)">↑</UiButton>
-              <UiButton size="sm" variant="ghost" :disabled="saving || questionIndex >= currentGroup.questions.length - 1" aria-label="Вопрос ниже" title="Вопрос ниже" @click="moveQuestion(currentQuestion, 1)">↓</UiButton>
-              <UiButton size="sm" :disabled="saving" @click="changePanel(() => duplicateQuestion(currentQuestion))">Скопировать вопрос</UiButton>
-            </div>
+            <UiButton v-if="currentQuestion" size="sm" :disabled="saving" @click="changePanel(() => duplicateQuestion(currentQuestion))">Скопировать вопрос</UiButton>
           </div>
           <QuestionEditor
             :key="editorVersion"
