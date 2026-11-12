@@ -74,3 +74,26 @@ class PublishingResults(BaseModel):
     responses: int
     in_progress: int
     questions: list[QuestionResult]
+
+
+class IndividualAnswer(BaseModel):
+    question_id: int
+    question: str
+    text: str
+    is_rich_text: bool = False
+
+
+class IndividualResponse(BaseModel):
+    number: int
+    submitted: bool
+    respondent: str | None = None
+    study_class: str | None = None
+    answers: list[IndividualAnswer]
+
+
+class IndividualResponses(BaseModel):
+    page: int
+    page_size: int
+    responses: int
+    in_progress: int
+    items: list[IndividualResponse]

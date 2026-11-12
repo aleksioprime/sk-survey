@@ -9,13 +9,16 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font
 from openpyxl.utils import get_column_letter
 from sk_common.people.models import User
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.responses.models import STATUS_SUBMITTED, Answer, Response
 from app.modules.results.schemas import (
     ChoiceBreakdown,
     DistributionItem,
+    IndividualAnswer,
+    IndividualResponse,
+    IndividualResponses,
     MatrixRowResult,
     OptionStat,
     PublishingResults,
@@ -29,6 +32,7 @@ from app.modules.surveys.models import MATRIX_TYPES, SCALE_GENERATED, TEXT_LIST,
 CHOICE = ('single_choice', 'multiple_choice')
 NUMERIC = ('number', 'scale')
 TEXTS = ('text', 'rich_text', TEXT_LIST)
+RESPONSES_PER_PAGE = 20
 
 
 @dataclass
@@ -40,11 +44,23 @@ class Dataset:
     users: dict[int, User]
 
 
-async def load(db: AsyncSession, publishing: Publishing, include_in_progress: bool = False) -> Dataset:
+def _response_query(publishing: Publishing, include_in_progress: bool):
     query = select(Response).where(Response.publishing_id == publishing.id)
     if not include_in_progress:
         query = query.where(Response.status == STATUS_SUBMITTED)
-    responses = list(await db.scalars(query.order_by(Response.submitted_at.nulls_last(), Response.created_at)))
+    return query
+
+
+def _ordered_responses(query):
+    return query.order_by(Response.submitted_at.nulls_last(), Response.created_at, Response.id)
+
+
+async def load(db: AsyncSession, publishing: Publishing, include_in_progress: bool = False) -> Dataset:
+    responses = list(await db.scalars(_ordered_responses(_response_query(publishing, include_in_progress))))
+    return await _load_dataset(db, publishing, responses)
+
+
+async def _load_dataset(db: AsyncSession, publishing: Publishing, responses: list[Response]) -> Dataset:
     answered = {a.question_id for r in responses for a in r.answers}
     questions = [
         q
@@ -55,8 +71,8 @@ async def load(db: AsyncSession, publishing: Publishing, include_in_progress: bo
     ]
     scale_ids = {q.scale_id for q in questions if q.scale_id}
     scales = {s.id: s for s in await db.scalars(select(Scale).where(Scale.id.in_(scale_ids or {0})))}
-    user_ids = {r.user_id for r in responses if r.user_id}
-    users = {u.id: u for u in await db.scalars(select(User).where(User.id.in_(user_ids or {0})))}
+    user_ids = {r.user_id for r in responses if r.user_id and not publishing.is_anonymous}
+    users = {u.id: u for u in await db.scalars(select(User).where(User.id.in_(user_ids)))} if user_ids else {}
     return Dataset(publishing, questions, responses, scales, users)
 
 
@@ -241,6 +257,71 @@ def answer_text(question: Question, answer: Answer | None, scale: Scale | None) 
     return ''
 
 
+def _matrix_values(question: Question, answer: Answer | None) -> list[str]:
+    choices = answer.matrix_choices if answer else {}
+    titles = {option.id: option.title for option in question.options}
+    return [
+        'Пропущен'
+        if answer and answer.is_skipped
+        else '; '.join(titles[oid] for oid in choices.get(row['id'], []) if oid in titles)
+        for row in question.matrix_rows
+    ]
+
+
+def _individual_answer(question: Question, answer: Answer, scale: Scale | None) -> IndividualAnswer:
+    if question.question_type in MATRIX_TYPES and not answer.is_skipped:
+        text = '\n'.join(
+            f"{row['title']}: {value}"
+            for row, value in zip(question.matrix_rows, _matrix_values(question, answer), strict=True)
+            if value
+        )
+    else:
+        text = answer_text(question, answer, scale)
+    return IndividualAnswer(
+        question_id=question.id,
+        question=question.text,
+        text=text,
+        is_rich_text=question.question_type == 'rich_text' and not answer.is_skipped,
+    )
+
+
+async def individual_responses(
+    db: AsyncSession, publishing: Publishing, include_in_progress: bool, page: int
+) -> IndividualResponses:
+    query = _response_query(publishing, include_in_progress)
+    total, submitted = (
+        await db.execute(
+            query.with_only_columns(func.count(), func.count().filter(Response.status == STATUS_SUBMITTED))
+        )
+    ).one()
+    page = min(page, max(1, (total + RESPONSES_PER_PAGE - 1) // RESPONSES_PER_PAGE))
+    offset = (page - 1) * RESPONSES_PER_PAGE
+    responses = list(await db.scalars(_ordered_responses(query).offset(offset).limit(RESPONSES_PER_PAGE)))
+    data = await _load_dataset(db, publishing, responses)
+    items = []
+    for number, response in enumerate(data.responses, offset + 1):
+        by_question = {answer.question_id: answer for answer in response.answers}
+        user = data.users.get(response.user_id)
+        person = user.person if user else None
+        answers = [
+            _individual_answer(question, by_question[question.id], data.scales.get(question.scale_id))
+            for question in data.questions
+            if question.id in by_question
+        ]
+        items.append(
+            IndividualResponse(
+                number=number,
+                submitted=response.status == STATUS_SUBMITTED,
+                respondent=(person.full_name if person else '') or (user.email if user else None),
+                study_class=person.study_class.name if person and person.study_class else None,
+                answers=[answer for answer in answers if answer.text],
+            )
+        )
+    return IndividualResponses(
+        page=page, page_size=RESPONSES_PER_PAGE, responses=submitted, in_progress=total - submitted, items=items
+    )
+
+
 def export_xlsx(data: Dataset) -> bytes:
     book = Workbook()
     sheet = book.active
@@ -273,14 +354,7 @@ def export_xlsx(data: Dataset) -> bytes:
         for question in data.questions:
             answer = by_question.get(question.id)
             if question.question_type in MATRIX_TYPES:
-                choices = answer.matrix_choices if answer else {}
-                titles = {option.id: option.title for option in question.options}
-                row.extend(
-                    'Пропущен'
-                    if answer and answer.is_skipped
-                    else '; '.join(titles[oid] for oid in choices.get(item['id'], []) if oid in titles)
-                    for item in question.matrix_rows
-                )
+                row.extend(_matrix_values(question, answer))
             else:
                 row.append(answer_text(question, answer, data.scales.get(question.scale_id)))
         sheet.append(row)

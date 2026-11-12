@@ -5,6 +5,7 @@ from io import BytesIO
 import pytest
 from openpyxl import load_workbook
 
+from app.modules.results import service
 from tests.conftest import other_client
 from tests.helpers import build_survey, full_answers, login_employee
 
@@ -72,19 +73,49 @@ async def test_export_xlsx(db, client):
     assert 'Сводка' in book.sheetnames
 
 
+async def test_individual_responses(db, client, monkeypatch):
+    monkeypatch.setattr(service, 'RESPONSES_PER_PAGE', 1)
+    await login_employee(db, client)
+    built = await build_survey(client)
+    async with other_client(client) as guest:
+        await _answer(guest, built)
+        await _answer(guest, built, {'text': {'text_value': 'Черновик'}}, submit=False)
+
+    url = f'/api/v1/publishings/{built["publishing"]["id"]}/responses'
+    page = (await client.get(url)).json()
+    assert (page['page'], page['responses'], page['in_progress']) == (1, 1, 0)
+    answer = page['items'][0]
+    assert set(answer) == {'number', 'submitted', 'respondent', 'study_class', 'answers'}
+    assert answer['submitted']
+    assert answer['respondent'] is None and answer['study_class'] is None
+    assert {item['question']: item['text'] for item in answer['answers']}['Вопрос text'] == 'Всё хорошо'
+
+    with_draft = (await client.get(url, params={'include_in_progress': True, 'page': 2})).json()
+    assert (with_draft['page'], with_draft['responses'], with_draft['in_progress']) == (2, 1, 1)
+    draft = with_draft['items'][0]
+    assert draft['number'] == 2 and not draft['submitted']
+    assert {item['question']: item['text'] for item in draft['answers']}['Вопрос text'] == 'Черновик'
+
+
 async def test_results_access(db, client):
     await login_employee(db, client)
     built = await build_survey(client)
-    url = f'/api/v1/publishings/{built["publishing"]["id"]}/results'
+    base_url = f'/api/v1/publishings/{built["publishing"]["id"]}'
+    other = await build_survey(client)
+    other_url = f'/api/v1/publishings/{other["publishing"]["id"]}/responses'
     async with other_client(client) as stranger:
-        assert (await stranger.get(url)).status_code == 401
+        assert (await stranger.get(f'{base_url}/results')).status_code == 401
+        assert (await stranger.get(f'{base_url}/responses')).status_code == 401
         await login_employee(db, stranger, email='other@skolkovo.example.org', last_name='Другой')
-        assert (await stranger.get(url)).status_code == 404
+        assert (await stranger.get(f'{base_url}/results')).status_code == 404
+        assert (await stranger.get(f'{base_url}/responses')).status_code == 404
         await client.patch(
-            f'/api/v1/publishings/{built["publishing"]["id"]}',
+            base_url,
             json={'observer_person_ids': [(await _person_id(db, 'other@skolkovo.example.org'))]},
         )
-        assert (await stranger.get(url)).status_code == 200
+        assert (await stranger.get(f'{base_url}/results')).status_code == 200
+        assert (await stranger.get(f'{base_url}/responses')).status_code == 200
+        assert (await stranger.get(other_url)).status_code == 404
 
 
 async def _person_id(db, email):

@@ -1,13 +1,13 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
-import { RouterLink } from 'vue-router'
-import { errorMessage, SkeletonPage, UiBadge, UiCard } from 'sk-ui'
-import { exportUrl, getPublishing, getResults } from '@/api/surveys'
+import { errorMessage, SkeletonPage, UiBadge, UiBreadcrumbs, UiButton, UiCard, UiSwitch } from 'sk-ui'
+import { exportUrl, getIndividualResponses, getPublishing, getResults } from '@/api/surveys'
 import SurveyArchiveBadge from '@/components/SurveyArchiveBadge.vue'
 import QuestionTypeIcon from '@/components/questions/QuestionTypeIcon.vue'
 import ChoiceBreakdown from '@/components/questions/ChoiceBreakdown.vue'
 import { QUESTION_TYPES } from '@/utils/questionTypes'
 import { useUrlQuery } from '@/utils/useUrlQuery'
+import PublishingResponseList from './PublishingResponseList.vue'
 
 const props = defineProps({ id: { type: String, required: true } })
 
@@ -16,8 +16,21 @@ const results = ref(null)
 const { route, setQuery } = useUrlQuery()
 const includeInProgress = computed({
   get: () => route.query.drafts === '1',
-  set: (value) => setQuery({ drafts: value ? '1' : undefined }),
+  set: (value) => setQuery({ drafts: value ? '1' : undefined, page: undefined }),
 })
+const showResponses = computed(() => route.query.view === 'responses')
+const responsePage = computed(() => {
+  const page = Number(route.query.page)
+  return showResponses.value && Number.isSafeInteger(page) && page > 0 ? page : 1
+})
+const breadcrumbs = computed(() => [
+  { label: 'Опросы', to: { name: 'surveys' } },
+  ...(publishing.value ? [{
+    label: 'Публикации',
+    to: { name: publishing.value.can_edit ? 'survey-publishings' : 'survey-results', params: { id: publishing.value.survey_id } },
+  }] : []),
+  { label: 'Результаты' },
+])
 const error = ref('')
 const textLimit = ref({})
 
@@ -25,8 +38,11 @@ let lastLoad = 0
 async function load() {
   const request = ++lastLoad
   error.value = ''
+  results.value = null
   try {
-    const result = await getResults(props.id, includeInProgress.value)
+    const result = showResponses.value
+      ? await getIndividualResponses(props.id, includeInProgress.value, responsePage.value)
+      : await getResults(props.id, includeInProgress.value)
     if (request === lastLoad) results.value = result
   } catch (e) {
     if (request === lastLoad) error.value = errorMessage(e)
@@ -42,7 +58,7 @@ onMounted(async () => {
   }
   await load()
 })
-watch(includeInProgress, () => { if (publishing.value) load() })
+watch([includeInProgress, showResponses, responsePage], () => { if (publishing.value) load() })
 
 const total = computed(() => (results.value ? results.value.responses + (includeInProgress.value ? results.value.in_progress : 0) : 0))
 const maxCount = (items) => Math.max(1, ...items.map((i) => i.count))
@@ -52,49 +68,53 @@ const format = (value) => (value == null ? '-' : Number(value).toLocaleString('r
 
 <template>
   <div>
-    <RouterLink
-      :to="publishing ? { name: publishing.can_edit ? 'survey-publishings' : 'survey-results', params: { id: publishing.survey_id } } : { name: 'surveys' }"
-      class="text-sm text-ink-muted hover:text-ink"
-    >{{ publishing ? '← Публикации' : '← Опросы' }}</RouterLink>
+    <UiBreadcrumbs :items="breadcrumbs" />
     <p v-if="error" role="alert" class="mt-4 rounded-control bg-red-100 px-3 py-2 text-sm text-red-800">{{ error }}</p>
 
-    <template v-if="publishing && results">
+    <template v-if="publishing">
       <div class="mt-2 flex flex-wrap items-start gap-4">
         <div class="min-w-0 flex-1">
           <div class="flex flex-wrap items-center gap-2 text-sm text-ink-muted">
-            {{ results.survey_title }}
+            {{ publishing.survey_title }}
             <SurveyArchiveBadge :active="publishing.survey_is_active" />
           </div>
-          <h1 class="text-2xl font-bold">{{ results.title }}</h1>
+          <h1 class="text-2xl font-bold wrap-anywhere">{{ publishing.title }}</h1>
           <p class="mt-2 flex flex-wrap gap-2">
-            <UiBadge tone="brand">Ответов: {{ results.responses }}</UiBadge>
-            <UiBadge v-if="results.in_progress">Не отправлено: {{ results.in_progress }}</UiBadge>
-            <UiBadge>{{ results.is_anonymous ? 'Анонимно' : 'С именами' }}</UiBadge>
+            <UiBadge tone="brand">Ответов: {{ results?.responses ?? publishing.submitted_count }}</UiBadge>
+            <UiBadge v-if="results?.in_progress">Не отправлено: {{ results.in_progress }}</UiBadge>
+            <UiBadge>{{ publishing.is_anonymous ? 'Анонимно' : 'С именами' }}</UiBadge>
           </p>
         </div>
         <div class="flex flex-wrap items-center gap-3">
-          <label class="flex items-center gap-2 text-sm">
-            <input v-model="includeInProgress" type="checkbox" class="accent-brand-600" /> Учитывать неотправленные
-          </label>
+          <UiSwitch v-model="includeInProgress" label="Учитывать неотправленные" />
           <a
             :href="exportUrl(props.id, includeInProgress)"
             class="inline-flex h-10 items-center rounded-control bg-brand-600 px-4 font-medium text-white hover:bg-brand-700"
           >
             Скачать Excel
           </a>
-          <RouterLink
-            v-if="publishing.can_edit"
-            :to="{ name: 'survey', params: { id: publishing.survey_id } }"
-            class="inline-flex h-10 items-center rounded-control border border-line bg-surface px-4 hover:bg-brand-50"
-          >
-            Опрос
-          </RouterLink>
         </div>
       </div>
 
-      <p v-if="!total" class="mt-10 text-center text-ink-muted">Ответов пока нет.</p>
+      <div role="group" aria-label="Вид отчёта" class="mt-5 flex flex-wrap gap-2">
+        <UiButton :variant="showResponses ? 'secondary' : 'primary'" :aria-pressed="!showResponses" @click="setQuery({ view: undefined, page: undefined })">
+          Сводка
+        </UiButton>
+        <UiButton :variant="showResponses ? 'primary' : 'secondary'" :aria-pressed="showResponses" @click="!showResponses && setQuery({ view: 'responses' })">
+          Отдельные ответы
+        </UiButton>
+      </div>
 
-      <div v-else class="mt-6 grid gap-4">
+      <SkeletonPage v-if="!results && !error" class="mt-6" />
+      <PublishingResponseList
+        v-else-if="results && showResponses"
+        :key="results.page"
+        :responses="results"
+        @page="setQuery({ page: $event === 1 ? undefined : $event })"
+      />
+      <p v-else-if="results && !total" class="mt-10 text-center text-ink-muted">Ответов пока нет.</p>
+
+      <div v-else-if="results" class="mt-6 grid gap-4">
         <UiCard v-for="(q, index) in results.questions" :key="q.question_id">
           <p class="flex items-center gap-2 text-xs text-ink-muted">
             <QuestionTypeIcon :type="q.question_type" class="size-4 text-brand-700" />
