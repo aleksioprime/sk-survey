@@ -6,6 +6,7 @@ import * as api from '@/api/surveys'
 import PersonPicker from '@/components/editor/PersonPicker.vue'
 import QuestionEditor from '@/components/editor/QuestionEditor.vue'
 import ScaleEditor from '@/components/editor/ScaleEditor.vue'
+import SurveyEditors from '@/components/editor/SurveyEditors.vue'
 import QuestionTypeIcon from '@/components/questions/QuestionTypeIcon.vue'
 import { QUESTION_TYPES } from '@/utils/questionTypes'
 
@@ -49,6 +50,9 @@ async function confirmRemoval() {
 // Настройки
 const settings = ref(null)
 const editors = ref([])
+const editorsSaving = ref(false)
+const editorsError = ref('')
+const editorsNotice = ref('')
 
 // Публикации
 const publishingDraft = ref(null)
@@ -134,7 +138,11 @@ function changeTab(key) {
   })
 }
 
-function setSurvey(data) {
+function editorDraft(members) {
+  return members.filter((member) => member.role === 'editor').map((member) => ({ ...member }))
+}
+
+function setSurvey(data, { keepEditorDraft = false } = {}) {
   survey.value = data
   settings.value = {
     title: data.title,
@@ -145,7 +153,7 @@ function setSurvey(data) {
     is_active: data.is_active,
     is_anonymous: data.is_anonymous,
   }
-  editors.value = data.members.filter((m) => m.role === 'editor').map((m) => ({ ...m }))
+  if (!keepEditorDraft) editors.value = editorDraft(data.members)
 }
 
 async function run(action, success = '') {
@@ -320,12 +328,26 @@ function onScaleCreated(scale) {
 
 async function saveSettings() {
   await run(async () => {
-    setSurvey(await api.updateSurvey(props.id, { ...settings.value, code: settings.value.code.trim() || null }))
+    const data = await api.updateSurvey(props.id, { ...settings.value, code: settings.value.code.trim() || null })
+    setSurvey(data, { keepEditorDraft: true })
   }, 'Настройки сохранены')
 }
 
 async function saveEditors() {
-  await run(async () => setSurvey(await api.setEditors(props.id, editors.value.map((e) => e.person_id))), 'Редакторы сохранены')
+  if (editorsSaving.value) return
+  editorsSaving.value = true
+  editorsError.value = ''
+  editorsNotice.value = ''
+  try {
+    const data = await api.setEditors(props.id, editors.value.map((editor) => editor.person_id))
+    survey.value.members = data.members
+    editors.value = editorDraft(data.members)
+    editorsNotice.value = 'Список редакторов сохранён'
+  } catch (e) {
+    editorsError.value = errorMessage(e)
+  } finally {
+    editorsSaving.value = false
+  }
 }
 
 async function copy() {
@@ -649,10 +671,15 @@ const textarea = 'rounded-control border border-line bg-surface p-3 outline-none
         <UiButton type="submit" variant="primary" class="justify-self-start">Сохранить</UiButton>
       </form>
 
-      <UiCard v-if="isOwner" class="grid gap-4">
-        <PersonPicker v-model="editors" label="Редакторы" hint="Могут менять вопросы и публикации, видят результаты." />
-        <UiButton class="justify-self-start" @click="saveEditors">Сохранить редакторов</UiButton>
-      </UiCard>
+      <SurveyEditors
+        v-if="isOwner"
+        v-model="editors"
+        :members="survey.members"
+        :saving="editorsSaving"
+        :error="editorsError"
+        :notice="editorsNotice"
+        @save="saveEditors"
+      />
 
       <div class="flex flex-wrap gap-2">
         <UiButton @click="copy">Сделать копию опроса</UiButton>

@@ -254,7 +254,13 @@ async def set_editors(db: AsyncSession, survey: Survey, person_ids: list[int]) -
     owners = [m for m in survey.members if m.role == ROLE_OWNER]
     users = await users_for_persons(db, person_ids)
     owner_ids = {m.user_id for m in owners}
-    survey.members = owners + [SurveyMember(user_id=u.id, role=ROLE_EDITOR) for u in users if u.id not in owner_ids]
+    if any(user.id in owner_ids for user in users):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, 'Владелец уже может редактировать опрос')
+    current_editors = {member.user_id: member for member in survey.members if member.role == ROLE_EDITOR}
+    survey.members = owners + [
+        current_editors.get(user_id) or SurveyMember(user_id=user_id, role=ROLE_EDITOR)
+        for user_id in dict.fromkeys(user.id for user in users)
+    ]
     await db.flush()
 
 
