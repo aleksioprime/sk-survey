@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { errorMessage, SkeletonTable, UiBadge } from 'sk-ui'
+import SurveyArchiveBadge from '@/components/SurveyArchiveBadge.vue'
 import { cabinetPublishings } from '@/api/surveys'
 
 const props = defineProps({ id: { type: String, required: true } })
@@ -26,8 +27,11 @@ const date = (value) => new Date(value).toLocaleDateString('ru-RU', { day: 'nume
 <template>
   <div>
     <RouterLink :to="{ name: 'surveys' }" class="text-sm text-ink-muted hover:text-ink">← Опросы</RouterLink>
-    <p v-if="publishings.length" class="mt-2 text-sm text-ink-muted">{{ publishings[0].survey_title }}</p>
-    <h1 class="mt-2 text-2xl font-bold">Результаты опроса</h1>
+    <div v-if="publishings.length" class="mt-2 flex flex-wrap items-center gap-2 text-sm text-ink-muted">
+      {{ publishings[0].survey_title }}
+      <SurveyArchiveBadge :active="publishings[0].survey_is_active" />
+    </div>
+    <h1 class="mt-2 text-2xl font-bold">Публикации</h1>
     <p v-if="error" role="alert" class="mt-4 rounded-control bg-red-100 px-3 py-2 text-sm text-red-800">{{ error }}</p>
     <SkeletonTable v-if="loading" class="mt-6" :rows="4" />
     <p v-else-if="!error && !publishings.length" class="mt-10 text-center text-ink-muted">Доступных публикаций пока нет.</p>

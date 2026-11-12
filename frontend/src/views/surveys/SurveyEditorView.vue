@@ -1,11 +1,12 @@
 <script setup>
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { onBeforeRouteUpdate, RouterLink, useRoute, useRouter } from 'vue-router'
-import { errorMessage, SkeletonPage, UiBadge, UiButton, UiCard, UiConfirm, UiInput } from 'sk-ui'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { onBeforeRouteLeave, onBeforeRouteUpdate, RouterLink, useRoute, useRouter } from 'vue-router'
+import { errorMessage, SkeletonPage, UiButton, UiCard, UiConfirm, UiFormActions, UiInput, UiSwitch } from 'sk-ui'
 import * as api from '@/api/surveys'
 import QuestionEditor from '@/components/editor/QuestionEditor.vue'
 import ScaleEditor from '@/components/editor/ScaleEditor.vue'
 import SurveyAccess from '@/components/editor/SurveyAccess.vue'
+import SurveyArchiveBadge from '@/components/SurveyArchiveBadge.vue'
 import QuestionTypeIcon from '@/components/questions/QuestionTypeIcon.vue'
 import { QUESTION_TYPES } from '@/utils/questionTypes'
 import { useAuthStore } from '@/stores/auth'
@@ -20,6 +21,7 @@ const scales = ref([])
 const tab = ref('questions')
 const error = ref('')
 const notice = ref('')
+const copying = ref(false)
 
 // Конструктор
 const selected = ref(null) // id вопроса, 'new', 'section'
@@ -50,12 +52,18 @@ async function confirmRemoval() {
 
 // Настройки
 const settings = ref(null)
+const settingsSaving = ref(false)
+const settingsError = ref('')
+const activeSaving = ref(false)
+const activeError = ref('')
 const accessDraft = ref([])
 const accessSaving = ref(false)
 const accessError = ref('')
 const accessNotice = ref('')
 
-const canManageAccess = computed(() => ['owner', 'admin'].includes(survey.value?.role))
+const savedSettings = computed(() => survey.value ? settingsFromSurvey(survey.value) : {})
+const settingChanged = (key) => settings.value?.[key] !== savedSettings.value[key]
+const settingsDirty = computed(() => !!settings.value && Object.keys(savedSettings.value).some(settingChanged))
 const groups = computed(() => {
   if (!survey.value) return []
   const known = new Set(survey.value.sections.map((s) => s.id))
@@ -80,6 +88,35 @@ const sectionDirty = computed(() => sectionDraft.value && (
   sectionDraft.value.title !== (currentSection.value?.title || '')
   || sectionDraft.value.description !== (currentSection.value?.description || '')
 ))
+
+const hasDraft = computed(() => questionDirty.value || sectionDirty.value || settingsDirty.value)
+
+function confirmNavigation() {
+  if (saving.value || settingsSaving.value || accessSaving.value) return false
+  if (!hasDraft.value) return true
+  finishDiscard(false)
+  return new Promise((resolve) => {
+    discardAction.value = {
+      confirm: () => {
+        if (settingsDirty.value) cancelSettings()
+        resolve(true)
+      },
+      cancel: () => resolve(false),
+    }
+  })
+}
+
+function protectReload(event) {
+  if (!hasDraft.value && !saving.value && !settingsSaving.value) return
+  event.preventDefault()
+  event.returnValue = true
+}
+
+onMounted(() => window.addEventListener('beforeunload', protectReload))
+onUnmounted(() => {
+  window.removeEventListener('beforeunload', protectReload)
+  finishDiscard(false)
+})
 
 async function focusEditor() {
   outlineOpen.value = false
@@ -170,15 +207,11 @@ watch(() => route.query, () => {
   if (survey.value && route.name === 'survey' && route.params.id === props.id) restoreView(true)
 })
 
+onBeforeRouteLeave(confirmNavigation)
 onBeforeRouteUpdate((to) => {
   if (!survey.value) return true
   if (to.name === 'survey' && to.params.id === props.id && matchesView(viewFromQuery(to.query))) return true
-  if (saving.value) return false
-  if (!questionDirty.value && !sectionDirty.value) return true
-  finishDiscard(false)
-  return new Promise((resolve) => {
-    discardAction.value = { confirm: () => resolve(true), cancel: () => resolve(false) }
-  })
+  return confirmNavigation()
 })
 
 function chooseQuestion(id) {
@@ -204,17 +237,20 @@ function resetAccessDraft(members) {
   accessDraft.value = members.map((member) => ({ ...member }))
 }
 
-function setSurvey(data, { keepAccessDraft = false } = {}) {
-  survey.value = data
-  settings.value = {
+function settingsFromSurvey(data) {
+  return {
     title: data.title,
     code: data.code || '',
     description: data.description,
     intro_text: data.intro_text,
     thank_you_text: data.thank_you_text,
-    is_active: data.is_active,
     is_anonymous: data.is_anonymous,
   }
+}
+
+function setSurvey(data, { keepAccessDraft = false } = {}) {
+  survey.value = data
+  settings.value = settingsFromSurvey(data)
   if (!keepAccessDraft) resetAccessDraft(data.members)
 }
 
@@ -386,32 +422,74 @@ function onScaleCreated(scale) {
 
 // --- Настройки ---
 
-async function saveSettings() {
-  await run(async () => {
-    const data = await api.updateSurvey(props.id, { ...settings.value, code: settings.value.code.trim() || null })
-    setSurvey(data, { keepAccessDraft: true })
-  }, 'Настройки сохранены')
+function cancelSettings() {
+  settings.value = settingsFromSurvey(survey.value)
+  settingsError.value = ''
 }
 
-async function saveAccess() {
+async function saveSettings() {
+  if (!settingsDirty.value || settingsSaving.value || activeSaving.value || copying.value) return
+  settingsSaving.value = true
+  settingsError.value = ''
+  notice.value = ''
+  try {
+    const data = await api.updateSurvey(props.id, { ...settings.value, code: settings.value.code.trim() || null })
+    setSurvey(data, { keepAccessDraft: true })
+    notice.value = 'Настройки сохранены'
+  } catch (e) {
+    settingsError.value = errorMessage(e)
+  } finally {
+    settingsSaving.value = false
+  }
+}
+
+async function setArchived(archived) {
+  const value = !archived
+  if (activeSaving.value || settingsSaving.value || copying.value || value === survey.value.is_active) return
+  activeSaving.value = true
+  activeError.value = ''
+  try {
+    const saved = await api.updateSurvey(props.id, { is_active: value })
+    survey.value.is_active = saved.is_active
+  } catch (e) {
+    activeError.value = errorMessage(e)
+  } finally {
+    activeSaving.value = false
+  }
+}
+
+async function saveAccess(confirmed = false) {
   if (accessSaving.value) return
+  const leavesEditors = !auth.isAdmin && !accessDraft.value.some((member) => member.user_id === auth.user?.id)
+  if (leavesEditors && !confirmed) {
+    discardAction.value = {
+      title: 'Убрать себя из редакторов?',
+      text: hasDraft.value
+        ? 'Вы потеряете доступ к редактированию. Несохранённые изменения будут потеряны.'
+        : 'Вы потеряете доступ к редактированию этого опроса.',
+      confirmLabel: 'Убрать себя',
+      confirm: () => saveAccess(true),
+    }
+    return
+  }
   accessSaving.value = true
   accessError.value = ''
   accessNotice.value = ''
   try {
-    const members = accessDraft.value.map(({ user_id, person_id, role }) => (
-      user_id == null ? { person_id, role } : { user_id, role }
+    const members = accessDraft.value.map(({ user_id, person_id }) => (
+      user_id == null ? { person_id } : { user_id }
     ))
-    const data = await api.setSurveyAccess(props.id, members)
+    const expectedUserIds = survey.value.members.map((member) => member.user_id)
+    const data = await api.setSurveyAccess(props.id, members, expectedUserIds)
     survey.value.members = data.members
     survey.value.role = data.role
     resetAccessDraft(data.members)
     if (data.role == null) {
+      discardDrafts()
+      accessSaving.value = false
       await router.push({ name: 'surveys' })
-    } else if (canManageAccess.value) {
-      accessNotice.value = 'Доступ сохранён'
     } else {
-      notice.value = 'Доступ сохранён. Теперь у вас роль редактора.'
+      accessNotice.value = 'Доступ сохранён'
     }
   } catch (e) {
     accessError.value = errorMessage(e)
@@ -420,9 +498,33 @@ async function saveAccess() {
   }
 }
 
-async function copy() {
-  const copied = await run(() => api.copySurvey(props.id))
-  if (copied) await router.push({ name: 'survey', params: { id: copied.id } })
+function requestCopy() {
+  if (copying.value || saving.value || settingsSaving.value || activeSaving.value || accessSaving.value) return
+  if (hasDraft.value) {
+    discardAction.value = {
+      title: 'Сделать копию без сохранения?',
+      confirmLabel: 'Скопировать',
+      confirm: () => copy(true),
+    }
+  } else copy()
+}
+
+function discardDrafts() {
+  if (settingsDirty.value) cancelSettings()
+  if (selected.value === 'section') openSection(currentSection.value, false)
+  else openQuestion(selected.value, false)
+}
+
+async function copy(discard = false) {
+  copying.value = true
+  try {
+    const copied = await run(() => api.copySurvey(props.id))
+    if (!copied || route.name !== 'survey' || route.params.id !== props.id) return
+    if (discard) discardDrafts()
+    await router.push({ name: 'survey', params: { id: copied.id } })
+  } finally {
+    copying.value = false
+  }
 }
 
 function remove() {
@@ -431,7 +533,10 @@ function remove() {
     text: 'Это возможно, только пока по нему нет отправленных ответов.',
     action: async () => {
       const done = await run(() => api.deleteSurvey(props.id))
-      if (done !== undefined) await router.push({ name: 'surveys' })
+      if (done !== undefined) {
+        discardDrafts()
+        await router.push({ name: 'surveys' })
+      }
     },
   }
 }
@@ -443,17 +548,28 @@ const textarea = 'rounded-control border border-line bg-surface p-3 outline-none
 <template>
   <div v-if="survey">
     <RouterLink :to="{ name: 'surveys' }" class="text-sm text-ink-muted hover:text-ink">← Опросы</RouterLink>
-    <div class="mt-2 flex flex-wrap items-center gap-3">
-      <h1 class="text-2xl font-bold">{{ survey.title }}</h1>
-      <UiBadge v-if="!survey.is_active" tone="warning">Выключен</UiBadge>
+    <div class="mt-2 flex flex-wrap items-start justify-between gap-3 sm:flex-nowrap">
+      <div class="flex min-w-0 flex-wrap items-center gap-3">
+        <h1 class="min-w-0 text-2xl font-bold wrap-anywhere">{{ survey.title }}</h1>
+        <SurveyArchiveBadge :active="survey.is_active" />
+      </div>
+      <div class="flex w-full flex-wrap items-center justify-between gap-2 sm:w-auto sm:shrink-0 sm:justify-end">
+        <RouterLink
+          :to="{ name: 'survey-preview', params: { id: props.id }, query: route.query }"
+          class="inline-flex min-h-10 items-center justify-center rounded-control bg-brand-600 px-3 text-sm font-medium text-white hover:bg-brand-700"
+        >
+          Предпросмотр
+        </RouterLink>
+        <UiButton
+          class="px-3! text-sm"
+          :loading="copying"
+          :disabled="saving || settingsSaving || activeSaving || accessSaving"
+          @click="requestCopy"
+        >
+          Сделать копию опроса
+        </UiButton>
+      </div>
     </div>
-
-    <RouterLink
-      :to="{ name: 'survey-preview', params: { id: props.id } }"
-      target="_blank"
-      rel="noopener"
-      class="mt-3 inline-block text-sm font-medium text-brand-700 hover:underline"
-    >Предпросмотр ↗</RouterLink>
 
     <div class="mt-5 flex flex-wrap gap-1 border-b border-line" role="tablist">
       <button
@@ -524,6 +640,7 @@ const textarea = 'rounded-control border border-line bg-surface p-3 outline-none
                   @click="chooseQuestion(question.id)"
                 >
                   <QuestionTypeIcon :type="question.question_type" class="mt-0.5 text-brand-700" />
+                  <span v-if="selected === question.id && questionDirty" class="mt-1.5 size-2 shrink-0 rounded-full bg-brand-600" role="img" aria-label="Есть несохранённые изменения" />
                   <span class="min-w-0">
                     <span class="line-clamp-2 break-words text-sm font-medium">{{ question.text }}<span v-if="question.is_required" class="text-red-600" aria-label="Обязательный"> *</span></span>
                     <span class="mt-0.5 block text-xs text-ink-muted">
@@ -570,7 +687,6 @@ const textarea = 'rounded-control border border-line bg-surface p-3 outline-none
               <h2 ref="editorHeading" tabindex="-1" class="scroll-mt-20 text-lg font-semibold outline-none">
                 {{ currentQuestion ? `Вопрос ${position} из ${orderedQuestions.length}` : 'Новый вопрос' }}
               </h2>
-              <p v-if="questionDirty" class="text-xs text-ink-muted">Есть несохранённые изменения</p>
             </div>
             <UiButton v-if="currentQuestion" size="sm" :disabled="saving" @click="changePanel(() => duplicateQuestion(currentQuestion))">Скопировать вопрос</UiButton>
           </div>
@@ -602,15 +718,18 @@ const textarea = 'rounded-control border border-line bg-surface p-3 outline-none
             </div>
           </div>
           <form class="grid gap-3 rounded-card border border-line bg-surface p-4 sm:p-5" @submit.prevent="saveSection">
-            <UiInput v-model="sectionDraft.title" label="Название раздела" />
+            <UiInput v-model="sectionDraft.title" label="Название раздела" :class="{ 'ui-changed': sectionDraft.title !== (currentSection?.title || '') }" :disabled="saving" />
             <label class="grid gap-1.5 text-sm font-medium">
               Пояснение
-              <textarea v-model="sectionDraft.description" rows="3" :class="textarea" />
+              <textarea v-model="sectionDraft.description" rows="3" :class="[textarea, { 'ui-changed': sectionDraft.description !== (currentSection?.description || '') }]" :disabled="saving" />
             </label>
-            <div class="flex gap-2">
-              <UiButton type="submit" variant="primary" size="sm" :loading="saving">Сохранить раздел</UiButton>
-              <UiButton size="sm" variant="ghost" :disabled="saving" @click="currentSection ? openSection(currentSection) : cancelQuestion()">Отмена</UiButton>
-            </div>
+            <UiFormActions
+              v-if="sectionDirty || !currentSection"
+              :message="sectionDirty ? 'Есть несохранённые изменения' : ''"
+              :save-label="currentSection ? 'Сохранить' : 'Добавить раздел'"
+              :loading="saving"
+              @cancel="currentSection ? openSection(currentSection) : cancelQuestion()"
+            />
           </form>
         </template>
 
@@ -623,47 +742,59 @@ const textarea = 'rounded-control border border-line bg-surface p-3 outline-none
 
     <!-- Настройки -->
     <section v-else class="mt-6 grid max-w-3xl gap-6">
+      <UiCard class="grid gap-2 p-4">
+        <UiSwitch
+          :model-value="!survey.is_active"
+          label="В архив"
+          hint="Ссылки на публикации закрываются сразу. Собранные ответы доступны."
+          class="justify-self-start"
+          :loading="activeSaving"
+          :disabled="settingsSaving || copying"
+          @update:model-value="setArchived"
+        />
+        <p v-if="activeError" role="alert" class="rounded-control bg-red-100 px-3 py-2 text-sm text-red-800">{{ activeError }}</p>
+      </UiCard>
+
       <form class="grid gap-4 rounded-card border border-line bg-surface p-5" @submit.prevent="saveSettings">
-        <UiInput v-model="settings.title" label="Название" required />
-        <UiInput v-model="settings.code" label="Код" hint="Латиница, цифры, «_» и «-». Для выгрузок и поиска, необязательно." />
-        <label class="grid gap-1.5 text-sm font-medium">Описание <textarea v-model="settings.description" rows="2" :class="textarea" /></label>
-        <label class="grid gap-1.5 text-sm font-medium">
-          Вступительный текст <span class="font-normal text-ink-muted">- на первом экране опроса</span>
-          <textarea v-model="settings.intro_text" rows="5" :class="textarea" />
-        </label>
-        <label class="grid gap-1.5 text-sm font-medium">
-          Текст после отправки
-          <textarea v-model="settings.thank_you_text" rows="3" :class="textarea" />
-        </label>
-        <label class="flex items-center gap-2 text-sm"><input v-model="settings.is_active" type="checkbox" class="accent-brand-600" /> Опрос включён (выключенный не открывается по ссылкам)</label>
-        <label class="flex items-center gap-2 text-sm"><input v-model="settings.is_anonymous" type="checkbox" class="accent-brand-600" /> Новые публикации - анонимные</label>
-        <UiButton type="submit" variant="primary" class="justify-self-start">Сохранить</UiButton>
+        <fieldset class="grid min-w-0 gap-4" :disabled="settingsSaving || copying || accessSaving">
+          <UiInput v-model="settings.title" :class="{ 'ui-changed': settingChanged('title') }" label="Название" required />
+          <UiInput v-model="settings.code" :class="{ 'ui-changed': settingChanged('code') }" label="Код" hint="Латиница, цифры, «_» и «-». Для выгрузок и поиска, необязательно." />
+          <label class="grid gap-1.5 text-sm font-medium">Описание <textarea v-model="settings.description" rows="2" :class="[textarea, { 'ui-changed': settingChanged('description') }]" /></label>
+          <label class="grid gap-1.5 text-sm font-medium">
+            Вступительный текст
+            <textarea v-model="settings.intro_text" rows="5" :class="[textarea, { 'ui-changed': settingChanged('intro_text') }]" />
+          </label>
+          <label class="grid gap-1.5 text-sm font-medium">
+            Текст после отправки
+            <textarea v-model="settings.thank_you_text" rows="3" :class="[textarea, { 'ui-changed': settingChanged('thank_you_text') }]" />
+          </label>
+          <UiSwitch v-model="settings.is_anonymous" label="Новые публикации анонимны" class="justify-self-start" :class="{ 'ui-changed': settingChanged('is_anonymous') }" />
+        </fieldset>
+        <p v-if="settingsError" role="alert" class="rounded-control bg-red-100 px-3 py-2 text-sm text-red-800">{{ settingsError }}</p>
+        <UiFormActions v-if="settingsDirty" :loading="settingsSaving" :disabled="activeSaving || copying || accessSaving" @cancel="cancelSettings" />
       </form>
 
       <SurveyAccess
-        v-if="canManageAccess"
         v-model="accessDraft"
+        :survey-id="props.id"
         :members="survey.members"
-        :saving="accessSaving"
+        :saving="accessSaving || settingsSaving"
         :error="accessError"
         :notice="accessNotice"
         @save="saveAccess"
       />
 
-      <div class="flex flex-wrap gap-2">
-        <UiButton @click="copy">Сделать копию опроса</UiButton>
-        <UiButton v-if="canManageAccess" variant="ghost" class="text-red-600" @click="remove">Удалить опрос</UiButton>
-      </div>
+      <UiButton variant="ghost" class="justify-self-start text-red-600" :disabled="accessSaving" @click="remove">Удалить опрос</UiButton>
     </section>
 
     <UiConfirm
       :open="!!discardAction"
-      title="Перейти без сохранения?"
-      confirm-label="Перейти"
+      :title="discardAction?.title ?? 'Перейти без сохранения?'"
+      :confirm-label="discardAction?.confirmLabel ?? 'Перейти'"
       @update:open="finishDiscard(false)"
       @confirm="finishDiscard(true)"
     >
-      Изменения в текущем редакторе будут потеряны.
+      {{ discardAction?.text ?? 'Изменения в текущем редакторе будут потеряны.' }}
     </UiConfirm>
 
     <UiConfirm

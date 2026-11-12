@@ -8,7 +8,7 @@ from sk_common.deps import CurrentUser, Db
 from sk_common.people.models import Person
 from sqlalchemy import or_, select
 
-from app.modules.surveys.permissions import can_create_surveys
+from app.modules.surveys.permissions import can_create_surveys, editable_survey
 
 router = APIRouter(prefix='/v1/directory', tags=['directory'])
 
@@ -22,9 +22,11 @@ class PersonBrief(BaseModel):
 
 @router.get('/employees', response_model=list[PersonBrief], summary='Найти сотрудника')
 async def search_employees(
-    db: Db, user: CurrentUser, q: Annotated[str, Query(min_length=2, max_length=100)]
+    db: Db, user: CurrentUser, q: Annotated[str, Query(min_length=2, max_length=100)], survey_id: int | None = None
 ) -> list[PersonBrief]:
-    if not can_create_surveys(user):
+    if survey_id is not None:
+        await editable_survey(db, survey_id, user)
+    elif not can_create_surveys(user):
         raise HTTPException(status.HTTP_403_FORBIDDEN, 'Недостаточно прав')
     pattern = f'%{q.strip()}%'
     rows = await db.scalars(

@@ -1,8 +1,9 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
-import { errorMessage, SkeletonPage, UiBadge, UiButton, UiCard, UiCopyField, UiDialog, UiInput } from 'sk-ui'
+import { errorMessage, SkeletonPage, UiBadge, UiButton, UiCard, UiCopyField, UiDialog, UiInput, UiSwitch } from 'sk-ui'
 import * as api from '@/api/surveys'
+import SurveyArchiveBadge from '@/components/SurveyArchiveBadge.vue'
 import PersonPicker from '@/components/editor/PersonPicker.vue'
 
 const props = defineProps({ id: { type: String, required: true } })
@@ -11,6 +12,8 @@ const publishings = ref([])
 const publishingDraft = ref(null)
 const publishingSaving = ref(false)
 const publishingError = ref('')
+const switching = ref(new Set())
+const switchErrors = ref({})
 const error = ref('')
 const loading = ref(true)
 
@@ -100,17 +103,28 @@ async function savePublishing() {
   }
 }
 
-async function togglePublishing(p) {
-  error.value = ''
+async function togglePublishing(p, active) {
+  if (!survey.value.is_active || switching.value.has(p.id)) return
+  switching.value.add(p.id)
+  delete switchErrors.value[p.id]
   try {
-    const saved = await api.updatePublishing(p.id, { is_active: !p.is_active })
+    const saved = await api.updatePublishing(p.id, { is_active: active })
     publishings.value = publishings.value.map((item) => item.id === saved.id ? saved : item)
   } catch (e) {
-    error.value = errorMessage(e)
+    switchErrors.value[p.id] = errorMessage(e)
+  } finally {
+    switching.value.delete(p.id)
   }
 }
 
 const publishingStatus = { open: 'Принимает ответы', scheduled: 'Запланирована', closed: 'Закрыта' }
+function publishingHint(p) {
+  if (!survey.value.is_active) return 'Приём закрыт, пока опрос в архиве.'
+  if (p.status === 'scheduled') return 'Ссылка откроется по расписанию.'
+  if (p.is_active && p.status === 'closed') return 'Срок истёк. Продлите его в настройках публикации.'
+  return ''
+}
+
 const canPublish = computed(() => survey.value.questions.some(
   (q) => q.is_active && (!q.section_id || survey.value.sections.some((s) => s.id === q.section_id && s.is_active)),
 ))
@@ -119,35 +133,57 @@ const canPublish = computed(() => survey.value.questions.some(
 <template>
   <div>
     <RouterLink :to="{ name: 'surveys' }" class="text-sm text-ink-muted hover:text-ink">← Опросы</RouterLink>
-    <p v-if="survey" class="mt-2 text-sm text-ink-muted">{{ survey.title }}</p>
+    <div v-if="survey" class="mt-2 flex flex-wrap items-center gap-2 text-sm text-ink-muted">
+      {{ survey.title }}
+      <SurveyArchiveBadge :active="survey.is_active" />
+    </div>
     <h1 class="mt-2 text-2xl font-bold">Публикации</h1>
     <p v-if="error" role="alert" class="mt-4 rounded-control bg-red-100 px-4 py-3 text-sm text-red-800">{{ error }}</p>
     <SkeletonPage v-if="loading" class="mt-6" />
-    <section v-if="survey" class="mt-6 grid grid-cols-[minmax(0,1fr)] gap-4">
+    <section v-if="survey" class="mt-6 grid grid-cols-[minmax(0,1fr)] gap-3">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <p class="max-w-xl text-sm text-ink-muted">
           Публикация - это ссылка на опрос для конкретной группы и периода. Ответы и результаты собираются по публикации.
         </p>
         <UiButton variant="primary" :disabled="!canPublish || publishingSaving" @click="newPublishing">Новая публикация</UiButton>
       </div>
-      <UiCard v-for="p in publishings" :key="p.id" class="grid grid-cols-[minmax(0,1fr)] gap-3 p-4 sm:p-5">
-        <div class="flex flex-col items-start gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-          <h2 class="min-w-0 font-semibold wrap-anywhere">{{ p.title }}</h2>
-          <div class="flex max-w-full flex-wrap gap-1.5">
-            <UiBadge :tone="p.status === 'open' ? 'success' : 'warning'">{{ publishingStatus[p.status] }}</UiBadge>
-            <UiBadge>{{ p.is_anonymous ? 'Анонимная' : 'С входом через SkolStream' }}</UiBadge>
+      <UiCard
+        v-for="p in publishings"
+        :key="p.id"
+        :aria-labelledby="`publishing-title-${p.id}`"
+        class="grid grid-cols-[minmax(0,1fr)] gap-2 p-3! sm:px-4!"
+      >
+        <div class="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+          <div class="grid min-w-0 flex-1 basis-56 gap-1.5">
+            <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <h2 :id="`publishing-title-${p.id}`" class="min-w-0 font-semibold wrap-anywhere">{{ p.title }}</h2>
+              <div class="flex max-w-full flex-wrap gap-1">
+                <UiBadge :tone="p.status === 'open' ? 'success' : 'warning'">{{ publishingStatus[p.status] }}</UiBadge>
+                <UiBadge>{{ p.is_anonymous ? 'Анонимная' : 'С входом через SkolStream' }}</UiBadge>
+              </div>
+            </div>
+            <p class="text-sm text-ink-muted wrap-anywhere">
+              Отправлено: {{ p.submitted_count }} · Черновиков: {{ p.in_progress_count }}
+              <template v-if="p.observers.length"> · Наблюдатели: {{ p.observers.map((o) => o.full_name).join(', ') }}</template>
+            </p>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <RouterLink :to="{ name: 'publishing', params: { id: p.id } }" class="inline-flex h-8 items-center rounded-control bg-brand-600 px-3 text-sm font-medium text-white hover:bg-brand-700">Результаты</RouterLink>
+            <UiButton size="sm" :disabled="publishingSaving || switching.has(p.id)" @click="editPublishing(p)">Изменить</UiButton>
           </div>
         </div>
-        <UiCopyField :value="publicUrl(p)" label="Ссылка на опрос" />
-        <p class="text-sm text-ink-muted">
-          Отправлено: {{ p.submitted_count }} · Начато, не отправлено: {{ p.in_progress_count }}
-          <template v-if="p.observers.length"> · Наблюдатели: {{ p.observers.map((o) => o.full_name).join(', ') }}</template>
-        </p>
-        <div class="flex flex-wrap gap-2">
-          <RouterLink :to="{ name: 'publishing', params: { id: p.id } }" class="inline-flex h-8 items-center rounded-control bg-brand-600 px-3 text-sm font-medium text-white hover:bg-brand-700">Результаты</RouterLink>
-          <UiButton size="sm" :disabled="publishingSaving" @click="editPublishing(p)">Изменить</UiButton>
-          <UiButton size="sm" variant="ghost" @click="togglePublishing(p)">{{ p.is_active ? 'Закрыть приём ответов' : 'Открыть снова' }}</UiButton>
+        <div class="flex flex-wrap items-center justify-between gap-x-4 border-t border-line pt-1">
+          <UiCopyField :value="publicUrl(p)" :label="publicUrl(p)" variant="link" class="-ms-2" />
+          <UiSwitch
+            :model-value="survey.is_active && p.is_active"
+            :loading="switching.has(p.id)"
+            :disabled="!survey.is_active || publishingSaving"
+            :hint="publishingHint(p)"
+            label="Приём ответов"
+            @update:model-value="togglePublishing(p, $event)"
+          />
         </div>
+        <p v-if="switchErrors[p.id]" role="alert" class="rounded-control bg-red-100 px-3 py-2 text-sm text-red-800">{{ switchErrors[p.id] }}</p>
       </UiCard>
 
       <UiDialog
@@ -171,6 +207,7 @@ const canPublish = computed(() => survey.value.questions.some(
             </div>
             <PersonPicker
               v-model="publishingDraft.observers"
+              :survey-id="props.id"
               label="Наблюдатели"
               hint="Видят результаты этой публикации, но не могут менять опрос."
               :disabled="publishingSaving"

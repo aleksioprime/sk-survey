@@ -6,9 +6,7 @@ from sk_common.people.models import User
 from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.surveys.models import ROLE_OWNER, Publishing, Survey, SurveyMember, publishing_observers
-
-ROLE_ADMIN = 'admin'
+from app.modules.surveys.models import ROLE_EDITOR, Publishing, Survey, SurveyMember, publishing_observers
 
 
 def can_create_surveys(user: User) -> bool:
@@ -16,15 +14,12 @@ def can_create_surveys(user: User) -> bool:
 
 
 async def survey_role(db: AsyncSession, survey_id: int, user: User) -> str | None:
-    """owner, editor, admin (администратор платформы) или None."""
-    role = await db.scalar(
-        select(SurveyMember.role).where(SurveyMember.survey_id == survey_id, SurveyMember.user_id == user.id)
+    if user.is_superuser:
+        return ROLE_EDITOR
+    member_id = await db.scalar(
+        select(SurveyMember.user_id).where(SurveyMember.survey_id == survey_id, SurveyMember.user_id == user.id)
     )
-    return effective_role(role, user)
-
-
-def effective_role(role: str | None, user: User) -> str | None:
-    return ROLE_ADMIN if user.is_superuser and role != ROLE_OWNER else role
+    return ROLE_EDITOR if member_id is not None else None
 
 
 async def editable_survey(db: AsyncSession, survey_id: int, user: User, *, lock: bool = False) -> tuple[Survey, str]:
@@ -33,11 +28,6 @@ async def editable_survey(db: AsyncSession, survey_id: int, user: User, *, lock:
     if survey is None or role is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, 'Опрос не найден')
     return survey, role
-
-
-def require_owner(role: str) -> None:
-    if role not in (ROLE_OWNER, ROLE_ADMIN):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, 'Это может только владелец опроса или администратор')
 
 
 async def is_observer(db: AsyncSession, publishing_id: int, user: User) -> bool:

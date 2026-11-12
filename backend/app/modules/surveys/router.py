@@ -4,11 +4,10 @@ from sk_common.deps import CurrentUser, Db
 from sqlalchemy import select
 
 from app.modules.surveys import service
-from app.modules.surveys.models import Publishing, Scale
+from app.modules.surveys.models import ROLE_EDITOR, Publishing, Scale
 from app.modules.surveys.permissions import (
     can_create_surveys,
     editable_survey,
-    require_owner,
     survey_role,
     viewable_publishing,
 )
@@ -54,7 +53,7 @@ async def create_survey(payload: SurveyIn, db: Db, user: CurrentUser) -> SurveyO
     survey = await service.create_survey(db, user, payload)
     record(db, 'survey.create', 'survey', survey.id, user.id)
     await db.commit()
-    return await service.survey_out(db, survey, 'owner')
+    return await service.survey_out(db, survey, ROLE_EDITOR)
 
 
 @router.get('/surveys/{survey_id}', response_model=SurveyOut, summary='Опрос со структурой')
@@ -74,8 +73,7 @@ async def update_survey(survey_id: int, payload: SurveyPatch, db: Db, user: Curr
 
 @router.delete('/surveys/{survey_id}', status_code=204, summary='Удалить опрос без ответов')
 async def delete_survey(survey_id: int, db: Db, user: CurrentUser) -> Response:
-    survey, role = await editable_survey(db, survey_id, user, lock=True)
-    require_owner(role)
+    survey, _ = await editable_survey(db, survey_id, user, lock=True)
     await service.delete_survey(db, survey)
     record(db, 'survey.delete', 'survey', survey_id, user.id)
     await db.commit()
@@ -89,14 +87,13 @@ async def copy_survey(survey_id: int, db: Db, user: CurrentUser) -> SurveyOut:
     survey = await service.copy_survey(db, source, user)
     record(db, 'survey.copy', 'survey', survey.id, user.id, source_id=survey_id)
     await db.commit()
-    return await service.survey_out(db, survey, 'owner')
+    return await service.survey_out(db, survey, ROLE_EDITOR)
 
 
-@router.put('/surveys/{survey_id}/members', response_model=SurveyOut, summary='Редакторы опроса')
+@router.put('/surveys/{survey_id}/members', response_model=SurveyOut, summary='Редакторы опроса', deprecated=True)
 async def set_members(survey_id: int, payload: MembersIn, db: Db, user: CurrentUser) -> SurveyOut:
     survey, role = await editable_survey(db, survey_id, user, lock=True)
-    require_owner(role)
-    await service.set_editors(db, survey, payload.editor_person_ids)
+    await service.set_editors(db, survey, payload.editor_person_ids, user.id)
     record(db, 'survey.members', 'survey', survey.id, user.id, editors=payload.editor_person_ids)
     await db.commit()
     return await service.survey_out(db, survey, role)
@@ -104,9 +101,8 @@ async def set_members(survey_id: int, payload: MembersIn, db: Db, user: CurrentU
 
 @router.put('/surveys/{survey_id}/access', response_model=SurveyAccessOut, summary='Доступ к опросу')
 async def set_survey_access(survey_id: int, payload: SurveyAccessIn, db: Db, user: CurrentUser) -> SurveyAccessOut:
-    survey, role = await editable_survey(db, survey_id, user, lock=True)
-    require_owner(role)
-    await service.set_survey_access(db, survey, payload.members)
+    survey, _ = await editable_survey(db, survey_id, user, lock=True)
+    await service.set_survey_access(db, survey, payload.members, payload.expected_user_ids)
     members = await service.survey_members_out(db, survey.id)
     record(
         db,

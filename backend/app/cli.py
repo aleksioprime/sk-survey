@@ -1,4 +1,4 @@
-"""Служебные команды: python -m app.cli bootstrap | nocobase-fetch <каталог> | nocobase-load <каталог> [владелец]."""
+"""Служебные команды: python -m app.cli bootstrap | nocobase-fetch <каталог> | nocobase-load <каталог> [редактор]."""
 
 import asyncio
 import json
@@ -38,7 +38,7 @@ def main() -> None:
     elif command == 'nocobase-load' and args:
         asyncio.run(nocobase_load(args[0], args[1] if len(args) > 1 else None))
     else:
-        print('Команды: bootstrap | nocobase-fetch <каталог> | nocobase-load <каталог> [email владельца]')
+        print('Команды: bootstrap | nocobase-fetch <каталог> | nocobase-load <каталог> [email редактора]')
         sys.exit(1)
 
 

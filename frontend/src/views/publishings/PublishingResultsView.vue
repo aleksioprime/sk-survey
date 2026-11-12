@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { errorMessage, SkeletonPage, UiBadge, UiCard } from 'sk-ui'
 import { exportUrl, getPublishing, getResults } from '@/api/surveys'
+import SurveyArchiveBadge from '@/components/SurveyArchiveBadge.vue'
 import QuestionTypeIcon from '@/components/questions/QuestionTypeIcon.vue'
 import ChoiceBreakdown from '@/components/questions/ChoiceBreakdown.vue'
 import { QUESTION_TYPES } from '@/utils/questionTypes'
@@ -52,15 +53,18 @@ const format = (value) => (value == null ? '-' : Number(value).toLocaleString('r
 <template>
   <div>
     <RouterLink
-      :to="publishing ? { name: 'survey-results', params: { id: publishing.survey_id } } : { name: 'surveys' }"
+      :to="publishing ? { name: publishing.can_edit ? 'survey-publishings' : 'survey-results', params: { id: publishing.survey_id } } : { name: 'surveys' }"
       class="text-sm text-ink-muted hover:text-ink"
-    >{{ publishing ? '← Результаты опроса' : '← Опросы' }}</RouterLink>
+    >{{ publishing ? '← Публикации' : '← Опросы' }}</RouterLink>
     <p v-if="error" role="alert" class="mt-4 rounded-control bg-red-100 px-3 py-2 text-sm text-red-800">{{ error }}</p>
 
     <template v-if="publishing && results">
       <div class="mt-2 flex flex-wrap items-start gap-4">
         <div class="min-w-0 flex-1">
-          <p class="text-sm text-ink-muted">{{ results.survey_title }}</p>
+          <div class="flex flex-wrap items-center gap-2 text-sm text-ink-muted">
+            {{ results.survey_title }}
+            <SurveyArchiveBadge :active="publishing.survey_is_active" />
+          </div>
           <h1 class="text-2xl font-bold">{{ results.title }}</h1>
           <p class="mt-2 flex flex-wrap gap-2">
             <UiBadge tone="brand">Ответов: {{ results.responses }}</UiBadge>

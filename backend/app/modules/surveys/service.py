@@ -17,7 +17,6 @@ from app.modules.responses.service import active_questions
 from app.modules.surveys.models import (
     MATRIX_TYPES,
     ROLE_EDITOR,
-    ROLE_OWNER,
     SCALE_ITEMS,
     Option,
     Publishing,
@@ -30,7 +29,6 @@ from app.modules.surveys.models import (
     SurveyMember,
     publishing_observers,
 )
-from app.modules.surveys.permissions import effective_role
 from app.modules.surveys.schemas import (
     MemberAccessIn,
     MemberOut,
@@ -65,7 +63,7 @@ def not_found(message: str) -> HTTPException:
 
 
 async def list_surveys(db: AsyncSession, user: User, *, include_observed: bool = False) -> list[SurveyListItem]:
-    query = select(Survey, SurveyMember.role).outerjoin(
+    query = select(Survey, SurveyMember.user_id).outerjoin(
         SurveyMember, (SurveyMember.survey_id == Survey.id) & (SurveyMember.user_id == user.id)
     )
     observed_ids = observed_publication_ids(user)
@@ -79,7 +77,7 @@ async def list_surveys(db: AsyncSession, user: User, *, include_observed: bool =
     rows = (await db.execute(query.order_by(Survey.updated_at.desc()))).unique().all()
     if not rows:
         return []
-    editable_ids = [survey.id for survey, role in rows if effective_role(role, user)]
+    editable_ids = [survey.id for survey, member_id in rows if user.is_superuser or member_id is not None]
     questions = await _count_by(db, Question.survey_id, editable_ids)
     viewable = Publishing.survey_id.in_(editable_ids)
     if include_observed and not user.is_superuser:
@@ -105,18 +103,18 @@ async def list_surveys(db: AsyncSession, user: User, *, include_observed: bool =
         ).all()
     )
     result = []
-    for survey, member_role in rows:
-        role = effective_role(member_role, user)
+    for survey, member_id in rows:
+        can_edit = user.is_superuser or member_id is not None
         count, publication_id = publishings.get(survey.id, (0, None))
         result.append(
             SurveyListItem.model_validate(survey).model_copy(
                 update={
-                    'code': survey.code if role else None,
+                    'code': survey.code if can_edit else None,
                     'questions_count': questions.get(survey.id, 0),
                     'publishings_count': count,
                     'result_publication_id': publication_id if count == 1 else None,
                     'responses_count': responses.get(survey.id, 0),
-                    'role': role or 'observer',
+                    'role': ROLE_EDITOR if can_edit else 'observer',
                 }
             )
         )
@@ -161,12 +159,13 @@ async def survey_members_out(db: AsyncSession, survey_id: int) -> list[MemberOut
 
 def _member_out(member: SurveyMember) -> MemberOut:
     user = member.user
+    name = user.person.full_name if user.person else ''
     return MemberOut(
         user_id=user.id,
         person_id=user.person_id,
         email=user.email,
-        full_name=user.person.full_name if user.person else user.email,
-        role=member.role,
+        full_name=name or user.email,
+        role=ROLE_EDITOR,
     )
 
 
@@ -183,7 +182,7 @@ async def _check_code(db: AsyncSession, code: str | None, survey_id: int | None 
 
 async def create_survey(db: AsyncSession, user: User, data: SurveyIn) -> Survey:
     survey = Survey(**data.model_dump(exclude={'code'}), code=await _check_code(db, data.code), created_by_id=user.id)
-    survey.members = [SurveyMember(user_id=user.id, role=ROLE_OWNER)]
+    survey.members = [SurveyMember(user_id=user.id)]
     db.add(survey)
     await db.flush()
     return survey
@@ -222,7 +221,7 @@ async def copy_survey(db: AsyncSession, source: Survey, user: User) -> Survey:
         is_anonymous=source.is_anonymous,
         created_by_id=user.id,
     )
-    survey.members = [SurveyMember(user_id=user.id, role=ROLE_OWNER)]
+    survey.members = [SurveyMember(user_id=user.id)]
     db.add(survey)
     await db.flush()
     sections = {}
@@ -282,26 +281,29 @@ async def copy_survey(db: AsyncSession, source: Survey, user: User) -> Survey:
     return survey
 
 
-async def set_editors(db: AsyncSession, survey: Survey, person_ids: list[int]) -> None:
+async def set_editors(db: AsyncSession, survey: Survey, person_ids: list[int], actor_id: int) -> None:
+    """Старый запрос заменяет список приглашённых редакторов, сохраняя доступ вызывающего редактора."""
     await db.refresh(survey, ['members'])
-    owners = [m for m in survey.members if m.role == ROLE_OWNER]
-    users = await users_for_persons(db, person_ids)
-    owner_ids = {m.user_id for m in owners}
-    if any(user.id in owner_ids for user in users):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, 'Владелец уже может редактировать опрос')
-    current_editors = {member.user_id: member for member in survey.members if member.role == ROLE_EDITOR}
-    survey.members = owners + [
-        current_editors.get(user_id) or SurveyMember(user_id=user_id, role=ROLE_EDITOR)
-        for user_id in dict.fromkeys(user.id for user in users)
-    ]
+    current = {member.user_id: member for member in survey.members}
+    users = await users_for_persons(db, person_ids, employees_only=True)
+    editor_ids = dict.fromkeys(user.id for user in users)
+    if actor_id in current:
+        editor_ids[actor_id] = None
+    if not editor_ids:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, 'У опроса должен остаться хотя бы один редактор')
+    survey.members = [current.get(user_id) or SurveyMember(user_id=user_id) for user_id in editor_ids]
     await db.flush()
 
 
-async def set_survey_access(db: AsyncSession, survey: Survey, access: list[MemberAccessIn]) -> None:
-    if not any(entry.role == ROLE_OWNER for entry in access):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, 'У опроса должен быть хотя бы один владелец')
+async def set_survey_access(
+    db: AsyncSession, survey: Survey, access: list[MemberAccessIn], expected_user_ids: list[int] | None
+) -> None:
+    if not access:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, 'У опроса должен остаться хотя бы один редактор')
     await db.refresh(survey, ['members'])
     current = {member.user_id: member for member in survey.members}
+    if expected_user_ids is not None and current.keys() != set(expected_user_ids):
+        raise conflict('Список редакторов изменился. Обновите страницу и повторите изменения.')
     if any(entry.user_id is not None and entry.user_id not in current for entry in access):
         raise conflict('Список участников изменился. Обновите страницу и повторите изменения.')
 
@@ -313,9 +315,7 @@ async def set_survey_access(db: AsyncSession, survey: Survey, access: list[Membe
         user_id = user_ids[entry.person_id] if entry.person_id is not None else entry.user_id
         if user_id in members:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, 'Участнику можно назначить только одну роль')
-        member = current.get(user_id) or SurveyMember(user_id=user_id)
-        member.role = entry.role
-        members[user_id] = member
+        members[user_id] = current.get(user_id) or SurveyMember(user_id=user_id)
     survey.members = list(members.values())
     await db.flush()
 
@@ -477,7 +477,7 @@ async def reorder(db: AsyncSession, survey: Survey, data: OrderIn) -> None:
 
 async def scale_usage(db: AsyncSession, user: User) -> dict[int, list[ScaleSurveyUsage]]:
     query = (
-        select(Question.scale_id, Survey.id, Survey.title)
+        select(Question.scale_id, Survey.id, Survey.title, Survey.is_active)
         .join(Survey, Survey.id == Question.survey_id)
         .where(Question.scale_id.is_not(None))
         .distinct()
@@ -486,8 +486,8 @@ async def scale_usage(db: AsyncSession, user: User) -> dict[int, list[ScaleSurve
     if not user.is_superuser:
         query = query.join(SurveyMember, SurveyMember.survey_id == Survey.id).where(SurveyMember.user_id == user.id)
     usage: dict[int, list[ScaleSurveyUsage]] = {}
-    for scale_id, survey_id, title in (await db.execute(query)).all():
-        usage.setdefault(scale_id, []).append(ScaleSurveyUsage(id=survey_id, title=title))
+    for scale_id, survey_id, title, is_active in (await db.execute(query)).all():
+        usage.setdefault(scale_id, []).append(ScaleSurveyUsage(id=survey_id, title=title, is_active=is_active))
     return usage
 
 
@@ -620,6 +620,7 @@ async def publishings_out(
                 id=p.id,
                 survey_id=p.survey_id,
                 survey_title=p.survey.title,
+                survey_is_active=p.survey.is_active,
                 title=p.title,
                 public_token=p.public_token,
                 is_active=p.is_active,

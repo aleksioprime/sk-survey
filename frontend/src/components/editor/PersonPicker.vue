@@ -5,6 +5,7 @@ import { computed, ref, watch } from 'vue'
 import { searchEmployees } from '@/api/surveys'
 
 const props = defineProps({
+  surveyId: { type: String, required: true },
   label: { type: String, required: true },
   hint: { type: String, default: '' },
   excluded: { type: Array, default: () => [] },
@@ -31,7 +32,7 @@ watch(query, (value, _, onCleanup) => {
   let current = true
   const timer = setTimeout(async () => {
     try {
-      const people = await searchEmployees(value.trim())
+      const people = await searchEmployees(value.trim(), props.surveyId)
       if (current) found.value = people
     } catch {
       if (current) found.value = []

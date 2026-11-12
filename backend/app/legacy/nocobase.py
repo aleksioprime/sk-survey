@@ -27,7 +27,6 @@ from app.modules.responses.models import STATUS_IN_PROGRESS, STATUS_SUBMITTED, A
 from app.modules.responses.service import RICH_TEXT_TAGS
 from app.modules.surveys.models import (
     QUESTION_TYPES,
-    ROLE_OWNER,
     SCALE_GENERATED,
     Option,
     Publishing,
@@ -220,7 +219,7 @@ class Loader:
                 **_stamps(row),
             )
             if owner:
-                survey.members = [SurveyMember(user_id=owner.id, role=ROLE_OWNER)]
+                survey.members = [SurveyMember(user_id=owner.id)]
             self.session.add(survey)
             self.count('surveys')
         await self.session.flush()

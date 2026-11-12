@@ -11,7 +11,9 @@ export const getSurvey = (id) => get(`/v1/surveys/${id}`)
 export const updateSurvey = (id, body) => patch(`/v1/surveys/${id}`, body)
 export const deleteSurvey = (id) => http.delete(`/v1/surveys/${id}`)
 export const copySurvey = (id) => post(`/v1/surveys/${id}/copy`)
-export const setSurveyAccess = (id, members) => put(`/v1/surveys/${id}/access`, { members })
+export const setSurveyAccess = (id, members, expectedUserIds) => put(
+  `/v1/surveys/${id}/access`, { members, expected_user_ids: expectedUserIds },
+)
 export const reorder = (id, body) => put(`/v1/surveys/${id}/order`, body)
 
 export const addSection = (surveyId, body) => post(`/v1/surveys/${surveyId}/sections`, body)
@@ -38,4 +40,4 @@ export const getResults = (id, includeInProgress = false) =>
 export const exportUrl = (id, includeInProgress = false) =>
   `/api/v1/publishings/${id}/export.xlsx?include_in_progress=${includeInProgress}`
 
-export const searchEmployees = (q) => get('/v1/directory/employees', { params: { q } })
+export const searchEmployees = (q, surveyId) => get('/v1/directory/employees', { params: { q, survey_id: surveyId } })

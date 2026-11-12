@@ -330,12 +330,9 @@ async function submit() {
 </script>
 
 <template>
-  <div class="flex min-h-dvh flex-col">
+  <div class="flex flex-col" :class="{ 'min-h-dvh': !preview }">
     <div class="mx-auto w-full flex-1 px-4 py-8 sm:py-12" :class="hasMatrix && stage === 'questions' ? 'max-w-5xl' : 'max-w-2xl'">
       <BrandMark class="mb-8" />
-      <p v-if="preview" class="mb-5 rounded-control bg-brand-50 px-4 py-3 text-sm font-medium text-brand-700">
-        Предпросмотр. Ответы не сохраняются.
-      </p>
       <SkeletonPage v-if="stage === 'loading'" />
 
       <UiCard v-else-if="stage === 'error'" class="p-6">
@@ -453,6 +450,6 @@ async function submit() {
         </UiCard>
       </template>
     </div>
-    <SchoolFooter />
+    <SchoolFooter v-if="!preview" />
   </div>
 </template>

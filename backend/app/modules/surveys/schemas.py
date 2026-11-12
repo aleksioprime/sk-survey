@@ -60,6 +60,7 @@ class ScaleIn(BaseModel):
 class ScaleSurveyUsage(BaseModel):
     id: int
     title: str
+    is_active: bool
 
 
 class ScaleOut(ORMModel):
@@ -279,7 +280,7 @@ class MembersIn(BaseModel):
 
 
 class MemberAccessIn(BaseModel):
-    role: Literal['owner', 'editor']
+    role: Literal['editor'] = 'editor'
     user_id: int | None = None
     person_id: int | None = None
 
@@ -292,6 +293,7 @@ class MemberAccessIn(BaseModel):
 
 class SurveyAccessIn(BaseModel):
     members: list[MemberAccessIn]
+    expected_user_ids: list[int] | None = None
 
 
 class SurveyAccessOut(BaseModel):
@@ -331,6 +333,7 @@ class PublishingOut(ORMModel):
     id: int
     survey_id: int
     survey_title: str
+    survey_is_active: bool
     title: str
     public_token: str
     is_active: bool

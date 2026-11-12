@@ -45,7 +45,6 @@ CHOICE_TYPES = ('single_choice', 'multiple_choice', 'ranking')
 SCALE_GENERATED = 'generated'  # значения от min до max с шагом
 SCALE_ITEMS = 'items'  # значения - элементы шкалы
 
-ROLE_OWNER = 'owner'
 ROLE_EDITOR = 'editor'
 
 publishing_observers = Table(
@@ -111,7 +110,7 @@ class Survey(IdMixin, TimestampMixin, Base):
 
 
 class SurveyMember(Base):
-    """Владельцы и редакторы опроса. Создатель изначально получает роль владельца."""
+    """Редакторы опроса. Создатель становится первым редактором."""
 
     __tablename__ = 'survey_members'
 

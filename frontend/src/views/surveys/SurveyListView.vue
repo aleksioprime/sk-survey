@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { errorMessage, SkeletonTable, UiBadge, UiButton, UiDialog, UiInput, UiSelect } from 'sk-ui'
 import { createSurvey, listSurveys } from '@/api/surveys'
+import SurveyArchiveBadge from '@/components/SurveyArchiveBadge.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useUrlQuery } from '@/utils/useUrlQuery'
 
@@ -17,33 +18,38 @@ const saving = ref(false)
 const createError = ref('')
 const search = ref('')
 
-const roles = { owner: 'Владелец', editor: 'Редактор', admin: 'Администратор', observer: 'Наблюдатель' }
-const canEdit = (survey) => ['owner', 'editor', 'admin'].includes(survey.role)
+const roles = { editor: 'Редактор', observer: 'Наблюдатель' }
+const canEdit = (survey) => survey.role === 'editor'
 const actionClass = 'inline-flex min-h-9 items-center rounded-control border border-line px-3 text-sm font-medium hover:border-brand-200 hover:bg-brand-50'
-const resultsRoute = (survey) => survey.result_publication_id
-  ? { name: 'publishing', params: { id: survey.result_publication_id } }
-  : { name: 'survey-results', params: { id: survey.id } }
-const statuses = { active: 'Включённые', inactive: 'Выключенные' }
+const statuses = { active: 'Активные', archived: 'В архиве', all: 'Все статусы' }
 const { route, setQuery } = useUrlQuery()
 const status = computed({
-  get: () => typeof route.query.status === 'string' && Object.hasOwn(statuses, route.query.status) ? route.query.status : '',
-  set: (value) => setQuery({ status: value || undefined }),
+  get: () => {
+    const value = route.query.status
+    if (value === 'inactive') return 'archived'
+    return typeof value === 'string' && Object.hasOwn(statuses, value) ? value : 'active'
+  },
+  set: (value) => setQuery({ status: value === 'active' ? undefined : value }),
 })
 const role = computed({
-  get: () => typeof route.query.role === 'string' && Object.hasOwn(roles, route.query.role) ? route.query.role : '',
+  get: () => {
+    const value = route.query.role
+    if (value === 'owner' || value === 'admin') return 'editor'
+    return typeof value === 'string' && Object.hasOwn(roles, value) ? value : ''
+  },
   set: (value) => setQuery({ role: value || undefined }),
 })
 const searchTerm = computed(() => search.value.trim().toLocaleLowerCase('ru'))
-const filtering = computed(() => !!(searchTerm.value || status.value || role.value))
+const filtering = computed(() => !!(searchTerm.value || status.value !== 'active' || role.value))
 const shown = computed(() => surveys.value.filter((survey) => {
-  if (status.value && (status.value === 'active') !== survey.is_active) return false
+  if (status.value !== 'all' && (status.value === 'active') !== survey.is_active) return false
   if (role.value && survey.role !== role.value) return false
   return [survey.title, survey.code].some((value) => value?.toLocaleLowerCase('ru').includes(searchTerm.value))
 }))
 
 function resetFilters() {
   search.value = ''
-  if (status.value || role.value) setQuery({ status: undefined, role: undefined })
+  if (status.value !== 'active' || role.value) setQuery({ status: undefined, role: undefined })
 }
 
 onMounted(async () => {
@@ -115,7 +121,6 @@ async function create() {
     <div v-if="surveys.length" class="mt-6 grid grid-cols-1 items-center gap-3 min-[360px]:grid-cols-2 sm:flex sm:flex-wrap">
       <UiInput v-model="search" type="search" aria-label="Поиск опросов" placeholder="Название или код опроса" class="col-span-full min-w-0 sm:min-w-56 sm:flex-1" />
       <UiSelect v-model="status" aria-label="Статус опроса">
-        <option value="">Все статусы</option>
         <option v-for="(label, key) in statuses" :key="key" :value="key">{{ label }}</option>
       </UiSelect>
       <UiSelect v-model="role" aria-label="Роль в опросе">
@@ -129,7 +134,9 @@ async function create() {
     <p v-else-if="!error && !surveys.length" class="mt-10 text-center text-ink-muted">
       {{ auth.canCreateSurveys ? 'Опросов пока нет. Создайте первый - добавьте вопросы и опубликуйте ссылку.' : 'Здесь появятся опросы, к которым вам откроют доступ.' }}
     </p>
-    <p v-else-if="filtering && !shown.length" class="mt-10 text-center text-ink-muted">По этим условиям опросов нет.</p>
+    <p v-else-if="surveys.length && !shown.length" class="mt-10 text-center text-ink-muted">
+      {{ filtering ? 'По этим условиям опросов нет.' : 'Активных опросов нет.' }}
+    </p>
     <ul v-else-if="shown.length" class="mt-4 grid gap-3">
       <li
         v-for="survey in shown"
@@ -140,7 +147,7 @@ async function create() {
           <div class="flex flex-col items-start gap-2 sm:flex-row sm:flex-wrap sm:items-center">
             <h2 class="min-w-0 font-semibold wrap-anywhere">{{ survey.title }}</h2>
             <div class="flex max-w-full flex-wrap gap-1.5">
-              <UiBadge v-if="!survey.is_active" tone="warning">Выключен</UiBadge>
+              <SurveyArchiveBadge :active="survey.is_active" />
               <UiBadge>{{ roles[survey.role] || survey.role }}</UiBadge>
             </div>
           </div>
@@ -152,9 +159,14 @@ async function create() {
         <div class="flex shrink-0 flex-wrap gap-2">
           <template v-if="canEdit(survey)">
             <RouterLink :to="{ name: 'survey', params: { id: survey.id } }" :class="actionClass">Редактировать</RouterLink>
-            <RouterLink :to="{ name: 'survey-publishings', params: { id: survey.id } }" :class="actionClass">Публикации</RouterLink>
           </template>
-          <RouterLink v-if="survey.publishings_count" :to="resultsRoute(survey)" :class="actionClass">Результаты</RouterLink>
+          <RouterLink
+            v-if="canEdit(survey) || survey.publishings_count"
+            :to="{ name: canEdit(survey) ? 'survey-publishings' : 'survey-results', params: { id: survey.id } }"
+            :class="actionClass"
+          >
+            Публикации
+          </RouterLink>
         </div>
       </li>
     </ul>

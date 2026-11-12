@@ -50,8 +50,8 @@ export const routes = [
       {
         path: 'surveys/:id/preview',
         name: 'survey-preview',
-        component: () => import('@/views/public/SurveyPassView.vue'),
-        props: (route) => ({ token: route.params.id, preview: true }),
+        component: () => import('@/views/surveys/SurveyPreviewView.vue'),
+        props: true,
       },
       { path: 'publishings', redirect: { name: 'surveys' } },
       {

@@ -1,9 +1,10 @@
 <script setup>
 import { computed } from 'vue'
-import { UiBadge, UiButton, UiCard, UiSelect } from 'sk-ui'
+import { UiBadge, UiButton, UiCard } from 'sk-ui'
 import PersonPicker from './PersonPicker.vue'
 
 const props = defineProps({
+  surveyId: { type: String, required: true },
   members: { type: Array, required: true },
   saving: { type: Boolean, default: false },
   error: { type: String, default: '' },
@@ -14,29 +15,14 @@ const emit = defineEmits(['save'])
 
 const keyFor = (person) => person.user_id == null ? `person:${person.person_id}` : `user:${person.user_id}`
 const savedKeys = computed(() => new Set(props.members.map(keyFor)))
-const selected = computed(() => new Map(model.value.map((person) => [keyFor(person), person])))
+const selected = computed(() => new Set(model.value.map(keyFor)))
 const additions = computed(() => model.value.filter((person) => !savedKeys.value.has(keyFor(person))))
 const rows = computed(() => [
-  ...props.members.map((person) => {
-    const draft = selected.value.get(keyFor(person))
-    return {
-      person: draft ?? person,
-      state: !draft ? 'removed' : draft.role === person.role ? 'saved' : 'changed',
-    }
-  }),
+  ...props.members.map((person) => ({ person, state: selected.value.has(keyFor(person)) ? 'saved' : 'removed' })),
   ...additions.value.map((person) => ({ person, state: 'added' })),
 ])
 const changed = computed(() => rows.value.some((row) => row.state !== 'saved'))
-const hasOwner = computed(() => model.value.some((person) => person.role === 'owner'))
-const labels = { removed: 'Будет убран', added: 'Будет добавлен', changed: 'Роль изменена' }
-
-function updatePeople(people) {
-  model.value = people.map((person) => ({ role: 'editor', ...person }))
-}
-
-function changeRole(person, role) {
-  model.value = model.value.map((item) => keyFor(item) === keyFor(person) ? { ...item, role } : item)
-}
+const labels = { removed: 'Будет убран', added: 'Будет добавлен' }
 
 function toggle({ person, state }) {
   model.value = state === 'removed'
@@ -48,9 +34,10 @@ function toggle({ person, state }) {
 <template>
   <UiCard class="grid gap-4">
     <div>
-      <h2 class="font-semibold">Доступ к опросу</h2>
+      <h2 class="font-semibold">Редакторы опроса</h2>
       <p class="mt-1 text-sm text-ink-muted">
-        Редакторы меняют опрос и публикации и видят результаты. Владельцы также управляют доступом и могут удалить опрос без ответов.
+        Редакторы меняют опрос и публикации, смотрят результаты и управляют этим списком.
+        Наблюдателей добавляют в настройках отдельной публикации.
       </p>
     </div>
 
@@ -62,16 +49,6 @@ function toggle({ person, state }) {
             <p v-if="row.person.email && row.person.email !== row.person.full_name" class="break-all text-xs text-ink-muted">{{ row.person.email }}</p>
           </div>
           <div class="flex flex-wrap items-center gap-2">
-            <UiSelect
-              :model-value="row.person.role"
-              size="sm"
-              :disabled="saving || row.state === 'removed'"
-              :aria-label="`Роль: ${row.person.full_name}`"
-              @update:model-value="changeRole(row.person, $event)"
-            >
-              <option value="owner">Владелец</option>
-              <option value="editor">Редактор</option>
-            </UiSelect>
             <UiBadge v-if="labels[row.state]" :tone="row.state === 'removed' ? 'warning' : 'brand'">{{ labels[row.state] }}</UiBadge>
             <UiButton
               size="sm"
@@ -88,18 +65,18 @@ function toggle({ person, state }) {
     </div>
 
     <PersonPicker
-      :model-value="model"
-      label="Добавить сотрудника"
+      v-model="model"
+      :survey-id="surveyId"
+      label="Добавить редактора"
       :excluded="members"
       :show-selection="false"
       :disabled="saving"
-      @update:model-value="updatePeople"
     />
 
-    <p v-if="!hasOwner" class="text-sm text-ink-muted">Назначьте хотя бы одного владельца, чтобы сохранить доступ.</p>
+    <p v-if="!model.length" class="text-sm text-ink-muted">У опроса должен остаться хотя бы один редактор.</p>
     <p v-if="error" role="alert" class="rounded-control bg-red-100 px-3 py-2 text-sm text-red-800">{{ error }}</p>
     <p v-if="notice && !changed" role="status" class="text-sm text-brand-700">{{ notice }}</p>
-    <UiButton class="justify-self-start" :loading="saving" :disabled="!changed || !hasOwner" @click="emit('save')">
+    <UiButton class="justify-self-start" :loading="saving" :disabled="!changed || !model.length" @click="emit('save')">
       Сохранить доступ
     </UiButton>
   </UiCard>
