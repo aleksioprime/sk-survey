@@ -31,7 +31,7 @@ answer_options = Table(
 
 
 class Response(IdMixin, TimestampMixin, Base):
-    """Одно прохождение публикации. Браузер держит токен прохождения, в БД — только его хеш."""
+    """Одно прохождение публикации. Браузер держит токен прохождения, в БД - только его хеш."""
 
     __tablename__ = 'survey_responses'
 
@@ -48,7 +48,7 @@ class Response(IdMixin, TimestampMixin, Base):
 
 
 class Answer(IdMixin, TimestampMixin, Base):
-    """Ответ на вопрос. Заполнено одно поле по типу вопроса; выбор и порядок — в связанных таблицах."""
+    """Ответ на вопрос. Заполнено одно поле по типу вопроса; выбор и порядок - в связанных таблицах."""
 
     __tablename__ = 'survey_answers'
     __table_args__ = (UniqueConstraint('response_id', 'question_id'),)

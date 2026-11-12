@@ -28,7 +28,7 @@ COMPOSE = '/infra/coolify/docker-compose.prod.yaml'
 DOMAINS = {
     'frontend': 'https://survey.skolhub.ru',
 }
-# Переменные из .env.prod, которые передаются в Coolify (остальные строки файла — старое приложение и служебные)
+# Переменные из .env.prod, которые передаются в Coolify (остальные строки файла - старое приложение и служебные)
 APP_VARS = [
     'SECRET_KEY',
     'DB__PASSWORD',

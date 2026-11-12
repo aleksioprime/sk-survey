@@ -335,7 +335,7 @@ async def users_for_persons(db: AsyncSession, person_ids: list[int], *, employee
     for person_id in unique_ids:
         person = persons[person_id]
         if not person.email:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, f'У {person.full_name} нет email — войти он не сможет')
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f'У {person.full_name} нет email - войти он не сможет')
         users.append(await ensure_user(db, person, person.email))
     return users
 
@@ -400,17 +400,17 @@ async def add_question(db: AsyncSession, survey: Survey, data: QuestionIn) -> Qu
 
 
 async def update_question(db: AsyncSession, question: Question, data: QuestionIn) -> None:
-    """Варианты обновляются по id; новые создаются; убранные удаляются, а выбранные в ответах — выключаются."""
+    """Варианты обновляются по id; новые создаются; убранные удаляются, а выбранные в ответах - выключаются."""
     await _check_question_refs(db, question.survey_id, data)
     answered = await answers_by_question(db, [question.id])
     if answered and data.question_type != question.question_type:
-        raise conflict('На вопрос уже отвечали — тип ответа менять нельзя')
+        raise conflict('На вопрос уже отвечали - тип ответа менять нельзя')
     if answered and question.question_type in MATRIX_TYPES:
         current = [(o.id, o.title, o.is_active) for o in question.options]
         incoming = [(o.id, o.title, o.is_active) for o in data.options]
         rows = [row.model_dump() for row in data.matrix_rows]
         if current != incoming or question.matrix_rows != rows:
-            raise conflict('На матрицу уже отвечали — строки и варианты менять нельзя')
+            raise conflict('На матрицу уже отвечали - строки и варианты менять нельзя')
     for field, value in data.model_dump(exclude={'options', 'ranges'}).items():
         setattr(question, field, value)
 
@@ -573,7 +573,7 @@ async def update_publishing(db: AsyncSession, publishing: Publishing, data: Publ
     if anonymity_changed and await db.scalar(
         select(func.count(Response.id)).where(Response.publishing_id == publishing.id)
     ):
-        raise conflict('По публикации уже есть ответы — анонимность менять нельзя')
+        raise conflict('По публикации уже есть ответы - анонимность менять нельзя')
     for field, value in changes.items():
         setattr(publishing, field, value)
     await db.flush()

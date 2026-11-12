@@ -46,7 +46,7 @@ watch(includeInProgress, () => { if (publishing.value) load() })
 const total = computed(() => (results.value ? results.value.responses + (includeInProgress.value ? results.value.in_progress : 0) : 0))
 const maxCount = (items) => Math.max(1, ...items.map((i) => i.count))
 const shownTexts = (q) => q.texts.slice(0, textLimit.value[q.question_id] || 10)
-const format = (value) => (value == null ? '—' : Number(value).toLocaleString('ru-RU', { maximumFractionDigits: 2 }))
+const format = (value) => (value == null ? '-' : Number(value).toLocaleString('ru-RU', { maximumFractionDigits: 2 }))
 </script>
 
 <template>
@@ -131,7 +131,7 @@ const format = (value) => (value == null ? '—' : Number(value).toLocaleString(
                 <dd class="text-lg font-semibold tabular-nums">{{ format(value) }}</dd>
               </div>
             </dl>
-            <div v-if="q.distribution.length" class="mt-4 flex h-32 items-end gap-1" role="img" :aria-label="`Распределение ответов: ${q.distribution.map((d) => `${d.value} — ${d.count}`).join(', ')}`">
+            <div v-if="q.distribution.length" class="mt-4 flex h-32 items-end gap-1" role="img" :aria-label="`Распределение ответов: ${q.distribution.map((d) => `${d.value} - ${d.count}`).join(', ')}`">
               <div v-for="item in q.distribution" :key="item.value" class="flex min-w-0 flex-1 flex-col items-center gap-1">
                 <span class="text-xs tabular-nums text-ink-muted">{{ item.count || '' }}</span>
                 <div class="w-full rounded-t bg-brand-500" :style="{ height: `${(item.count / maxCount(q.distribution)) * 88}px`, minHeight: item.count ? '3px' : '0' }" />

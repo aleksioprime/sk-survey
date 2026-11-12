@@ -67,7 +67,7 @@ async function save() {
       <UiInput v-model="form.step" label="Шаг" type="number" min="1" class="min-w-0" required />
     </div>
     <div v-else class="grid gap-2">
-      <p class="text-xs text-ink-muted">{{ source ? 'Баллы скопированных подписей сохраняются.' : 'По порядку от меньшего к большему, баллы — номер подписи.' }}</p>
+      <p class="text-xs text-ink-muted">{{ source ? 'Баллы скопированных подписей сохраняются.' : 'По порядку от меньшего к большему, баллы - номер подписи.' }}</p>
       <div v-for="(item, index) in form.items" :key="index" class="flex gap-2">
         <UiInput v-model="item.title" class="min-w-0 flex-1" :placeholder="`Подпись ${index + 1}`" :aria-label="`Подпись ${index + 1}`" />
         <UiButton size="sm" variant="ghost" class="text-ink-muted hover:text-red-600" aria-label="Удалить" @click="form.items.splice(index, 1)">✕</UiButton>

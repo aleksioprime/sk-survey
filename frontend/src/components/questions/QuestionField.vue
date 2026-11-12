@@ -1,6 +1,6 @@
 <script setup>
 /**
- * Поле ответа на вопрос любого типа. v-model — ответ в форме API:
+ * Поле ответа на вопрос любого типа. v-model - ответ в форме API:
  * { text_value, rich_text_value, number_value, boolean_value, scale_item_id, option_id, option_ids, ranking, is_skipped }.
  */
 import { UiInput } from 'sk-ui'
@@ -13,7 +13,7 @@ import { htmlToText, textToHtml } from '@/utils/richText'
 const props = defineProps({
   question: { type: Object, required: true },
   scale: { type: Object, default: null },
-  // Порядок вариантов для этого прохождения (при is_options_shuffled — перемешанный)
+  // Порядок вариантов для этого прохождения (при is_options_shuffled - перемешанный)
   options: { type: Array, default: () => [] },
   error: { type: String, default: '' },
   disabled: { type: Boolean, default: false },
@@ -121,7 +121,7 @@ const choiceClass = (active) =>
       :value="htmlToText(model.rich_text_value)"
       rows="6"
       class="w-full rounded-control border border-line bg-surface p-3 outline-none focus:border-brand-500"
-      placeholder="Ваш ответ. Пустая строка — новый абзац."
+      placeholder="Ваш ответ. Пустая строка - новый абзац."
       :aria-label="question.text"
       @input="update({ rich_text_value: textToHtml($event.target.value) })"
     />
@@ -237,7 +237,7 @@ const choiceClass = (active) =>
 
     <div v-else-if="question.question_type === 'ranking'" class="grid gap-3">
       <p class="text-sm text-ink-muted">
-        Нажимайте на варианты в порядке важности: первый — самый важный.<template v-if="limits"> {{ limits }}.</template>
+        Нажимайте на варианты в порядке важности: первый - самый важный.<template v-if="limits"> {{ limits }}.</template>
       </p>
       <ol v-if="ranked.length" class="grid gap-2">
         <li

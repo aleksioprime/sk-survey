@@ -5,7 +5,7 @@
     python -m app.cli nocobase-load /data/nocobase    # JSON-файлы → база SK Survey
 
 ID записей и публичные токены публикаций сохраняются: старые ссылки /s/<токен> продолжают работать.
-Ключи незаконченных прохождений переносятся хешем — человек может дописать начатый опрос.
+Ключи незаконченных прохождений переносятся хешем - человек может дописать начатый опрос.
 Повторная загрузка пропускает уже перенесённые записи.
 """
 
@@ -150,7 +150,7 @@ class Loader:
             if not email:
                 self.skip('observers', nb_person_id, 'у персоны нет email')
                 return None
-            # Войдёт через SkolStream — персона объединится с записью из справочника по email
+            # Войдёт через SkolStream - персона объединится с записью из справочника по email
             person = Person(
                 source=PERSON_SOURCE_LOCAL,
                 email=email,
@@ -253,7 +253,7 @@ class Loader:
                     id=int(row['id']),
                     survey_id=int(row['survey_id']),
                     section_id=_int(row.get('section_id')),
-                    text=_text(row.get('text')) or '—',
+                    text=_text(row.get('text')) or '-',
                     description=_text(row.get('description')),
                     question_type=row['question_type'],
                     order=_int(row.get('order')) or 0,
@@ -278,7 +278,7 @@ class Loader:
                 Option(
                     id=int(row['id']),
                     question_id=int(row['question_id']),
-                    title=_text(row.get('title'), 1000) or '—',
+                    title=_text(row.get('title'), 1000) or '-',
                     description=_text(row.get('description')),
                     value=_text(row.get('value'), 255),
                     score=row.get('score'),
@@ -396,7 +396,7 @@ class Loader:
 
 
 async def load(session: AsyncSession, source: Path, owner_email: str | None = None) -> dict:
-    """Загрузка выгрузки. owner_email — владелец перенесённых опросов в конструкторе."""
+    """Загрузка выгрузки. owner_email - владелец перенесённых опросов в конструкторе."""
     report = await Loader(session, source).run(owner_email)
     (source / 'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=1))
     return report

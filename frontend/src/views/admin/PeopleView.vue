@@ -161,7 +161,7 @@ async function setEmployee(user, value) {
 }
 
 function formatDate(value) {
-  return value ? new Date(value).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' }) : '—'
+  return value ? new Date(value).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' }) : '-'
 }
 
 onMounted(loadSync)
@@ -246,7 +246,7 @@ onMounted(loadSync)
         </thead>
         <tbody>
           <tr v-for="person in page.items" :key="person.id" class="border-t border-line" :class="{ 'opacity-50': !person.is_active }">
-            <td class="px-4 py-2 font-medium">{{ person.full_name || '—' }}</td>
+            <td class="px-4 py-2 font-medium">{{ person.full_name || '-' }}</td>
             <td class="px-4 py-2">
               <div class="flex flex-wrap gap-1">
                 <UiBadge v-if="person.is_student" tone="brand">ученик</UiBadge>
@@ -255,8 +255,8 @@ onMounted(loadSync)
                 <UiBadge v-if="!person.is_active" tone="danger">неактивен</UiBadge>
               </div>
             </td>
-            <td class="px-4 py-2">{{ person.study_class?.name || person.departments.map((d) => d.name).join(', ') || person.organization || '—' }}</td>
-            <td class="px-4 py-2 text-ink-muted">{{ person.email || '—' }}</td>
+            <td class="px-4 py-2">{{ person.study_class?.name || person.departments.map((d) => d.name).join(', ') || person.organization || '-' }}</td>
+            <td class="px-4 py-2 text-ink-muted">{{ person.email || '-' }}</td>
             <td class="px-4 py-2">
               <input
                 type="checkbox"
@@ -281,7 +281,7 @@ onMounted(loadSync)
         <tbody>
           <tr v-for="user in page.items" :key="user.id" class="border-t border-line">
             <td class="px-4 py-2 font-medium">{{ user.email }}</td>
-            <td class="px-4 py-2">{{ user.person?.full_name || '—' }}</td>
+            <td class="px-4 py-2">{{ user.person?.full_name || '-' }}</td>
             <td class="px-4 py-2 text-ink-muted">{{ formatDate(user.last_login_at) }}</td>
             <td class="px-4 py-2">
               <input

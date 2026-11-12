@@ -1,7 +1,7 @@
 # Прод SK Survey в Coolify: ресурс «Docker Compose» из этого репозитория.
 # Образы собирает GitHub Actions (.github/workflows/images.yml) при пуше в main, сервер только скачивает их.
 # Домен в интерфейсе Coolify: frontend → https://survey.skolhub.ru (API проксируется nginx на backend).
-# Переменные — из .env.prod (docs/deploy.md).
+# Переменные - из .env.prod (docs/deploy.md).
 
 x-backend: &backend
   image: ghcr.io/aleksioprime/sk-survey-backend:${IMAGE_TAG:-latest}
@@ -25,7 +25,7 @@ x-backend: &backend
     CAPTCHA__CLIENT_KEY: ${CAPTCHA__CLIENT_KEY:-}
     CAPTCHA__SERVER_KEY: ${CAPTCHA__SERVER_KEY:-}
     # Вход через SkolStream и выгрузка справочника (docs/skolstream.md).
-    # Вход включается, когда задан CLIENT_ID; синхронизация — когда задан DIRECTORY_TOKEN.
+    # Вход включается, когда задан CLIENT_ID; синхронизация - когда задан DIRECTORY_TOKEN.
     SKOLSTREAM__BASE_URL: ${SKOLSTREAM__BASE_URL:-https://skolstream.sk.ru}
     SKOLSTREAM__CLIENT_ID: ${SKOLSTREAM__CLIENT_ID:-}
     SKOLSTREAM__CLIENT_SECRET: ${SKOLSTREAM__CLIENT_SECRET:-}

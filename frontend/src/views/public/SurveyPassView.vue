@@ -64,7 +64,7 @@ const emptyAnswer = () => ({
 
 const scales = computed(() => Object.fromEntries((survey.value?.scales || []).map((s) => [s.id, s])))
 
-/** Страницы: вопросы без раздела — первой страницей, дальше разделы по порядку. */
+/** Страницы: вопросы без раздела - первой страницей, дальше разделы по порядку. */
 const pages = computed(() => {
   if (!survey.value) return []
   const questions = survey.value.questions

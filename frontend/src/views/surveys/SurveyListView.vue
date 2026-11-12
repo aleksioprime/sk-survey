@@ -127,7 +127,7 @@ async function create() {
 
     <SkeletonTable v-if="loading" class="mt-6" :rows="4" />
     <p v-else-if="!error && !surveys.length" class="mt-10 text-center text-ink-muted">
-      {{ auth.canCreateSurveys ? 'Опросов пока нет. Создайте первый — добавьте вопросы и опубликуйте ссылку.' : 'Здесь появятся опросы, к которым вам откроют доступ.' }}
+      {{ auth.canCreateSurveys ? 'Опросов пока нет. Создайте первый - добавьте вопросы и опубликуйте ссылку.' : 'Здесь появятся опросы, к которым вам откроют доступ.' }}
     </p>
     <p v-else-if="filtering && !shown.length" class="mt-10 text-center text-ink-muted">По этим условиям опросов нет.</p>
     <ul v-else-if="shown.length" class="mt-4 grid gap-3">

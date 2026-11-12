@@ -58,7 +58,7 @@ jobs:
           COOLIFY_APP: ${{ secrets.COOLIFY_APP }}
         run: |
           if [ -z "$COOLIFY_API" ] || [ -z "$COOLIFY_TOKEN" ] || [ -z "$COOLIFY_APP" ]; then
-            echo "::notice::Секреты COOLIFY_API, COOLIFY_TOKEN, COOLIFY_APP не заданы — выкатка пропущена"
+            echo "::notice::Секреты COOLIFY_API, COOLIFY_TOKEN, COOLIFY_APP не заданы - выкатка пропущена"
             exit 0
           fi
           curl -fsS --max-time 60 -X PATCH "$COOLIFY_API/applications/$COOLIFY_APP/envs/bulk" \

@@ -1,4 +1,4 @@
-"""Вход — из sk_common. В ответе /me — может ли человек создавать опросы."""
+"""Вход - из sk_common. В ответе /me - может ли человек создавать опросы."""
 
 from fastapi import Request
 from sk_common.auth.router import create_auth_router

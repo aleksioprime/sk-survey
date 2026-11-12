@@ -134,7 +134,7 @@ def _state(response: Response, token: str | None = None) -> StartResult:
 
 
 async def start_response(db: AsyncSession, publishing: Publishing, user: User | None) -> StartResult:
-    """Новое прохождение. Для неанонимной публикации — продолжение своего, ключ выдаётся заново."""
+    """Новое прохождение. Для неанонимной публикации - продолжение своего, ключ выдаётся заново."""
     token = new_secret()
     if publishing.is_anonymous:
         response = Response(publishing_id=publishing.id, token_hash=hash_secret(token))

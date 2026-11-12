@@ -61,7 +61,7 @@ class AnswerIn(BaseModel):
     scale_item_id: int | None = None
     option_id: int | None = None
     option_ids: list[int] = Field(default=[], max_length=200)
-    ranking: list[int] = Field(default=[], max_length=200, description='ID вариантов по порядку, первый — главный')
+    ranking: list[int] = Field(default=[], max_length=200, description='ID вариантов по порядку, первый - главный')
     matrix_choices: dict[str, Annotated[list[int], Field(min_length=1, max_length=50)]] = Field(
         default={}, max_length=50
     )
