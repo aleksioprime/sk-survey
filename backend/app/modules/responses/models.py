@@ -63,6 +63,7 @@ class Answer(IdMixin, TimestampMixin, Base):
     option_id: Mapped[int | None] = mapped_column(ForeignKey('survey_question_options.id', ondelete='SET NULL'))
     is_skipped: Mapped[bool] = mapped_column(Boolean, default=False, server_default='false')
 
+    text_rows: Mapped[list[str]] = mapped_column(JSONB, default=list, server_default='[]')
     matrix_choices: Mapped[dict[str, list[int]]] = mapped_column(JSONB, default=dict, server_default='{}')
 
     response: Mapped[Response] = relationship(back_populates='answers')

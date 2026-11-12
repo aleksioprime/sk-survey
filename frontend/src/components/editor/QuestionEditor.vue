@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { UiButton, UiInput, UiSelect } from 'sk-ui'
 import QuestionTypeIcon from '@/components/questions/QuestionTypeIcon.vue'
-import { MATRIX_TYPES, QUESTION_TYPES } from '@/utils/questionTypes'
+import { MATRIX_TYPES, QUESTION_TYPES, TEXT_LIST, TEXT_LIST_MAX_ROWS } from '@/utils/questionTypes'
 
 const props = defineProps({
   question: { type: Object, default: null }, // null — новый вопрос
@@ -25,6 +25,8 @@ const form = ref({
   scale_id: source?.scale_id ?? props.scales[0]?.id ?? null,
   min_selections: source?.min_selections ?? null,
   max_selections: source?.max_selections ?? null,
+  min_rows: source?.min_rows ?? null,
+  max_rows: source?.max_rows ?? null,
   min_number: source?.min_number ?? null,
   max_number: source?.max_number ?? null,
   is_options_shuffled: source?.is_options_shuffled ?? false,
@@ -54,6 +56,8 @@ function insertOptions() {
   bulk.value = null
 }
 const hasSelections = computed(() => ['multiple_choice', 'ranking'].includes(form.value.question_type))
+const isTextList = computed(() => form.value.question_type === TEXT_LIST)
+const rowBoundsError = ref('')
 const isScale = computed(() => form.value.question_type === 'scale')
 const scaleMissing = ref(false)
 
@@ -78,7 +82,12 @@ function save() {
   const f = form.value
   // UiSelect - кнопка, браузер не проверяет её как обязательное поле
   scaleMissing.value = isScale.value && !f.scale_id
-  if (scaleMissing.value) return
+  const minRows = isTextList.value ? numberOrNull(f.min_rows) : null
+  const maxRows = isTextList.value ? numberOrNull(f.max_rows) : null
+  rowBoundsError.value = minRows != null && maxRows != null && minRows > maxRows
+    ? 'Минимум строк должен быть не больше максимума.'
+    : ''
+  if (scaleMissing.value || rowBoundsError.value) return
   const payload = {
     text: f.text.trim(),
     description: f.description.trim(),
@@ -89,6 +98,8 @@ function save() {
     scale_id: isScale.value ? f.scale_id : null,
     min_selections: hasSelections.value ? numberOrNull(f.min_selections) : null,
     max_selections: hasSelections.value ? numberOrNull(f.max_selections) : null,
+    min_rows: minRows,
+    max_rows: maxRows,
     min_number: f.question_type === 'number' ? numberOrNull(f.min_number) : null,
     max_number: f.question_type === 'number' ? numberOrNull(f.max_number) : null,
     is_options_shuffled: hasOptions.value && !isMatrix.value && f.is_options_shuffled,
@@ -232,6 +243,18 @@ function save() {
     <div v-if="hasSelections" class="flex flex-wrap gap-4">
       <UiInput v-model="form.min_selections" label="Минимум выборов" type="number" min="0" class="w-40" />
       <UiInput v-model="form.max_selections" label="Максимум выборов" type="number" min="1" class="w-40" />
+    </div>
+
+    <div v-if="isTextList" class="grid gap-2">
+      <div class="flex flex-wrap gap-4">
+        <UiInput v-model="form.min_rows" label="Минимум строк" type="number" min="1" :max="TEXT_LIST_MAX_ROWS" class="w-40" @update:model-value="rowBoundsError = ''" />
+        <UiInput v-model="form.max_rows" label="Максимум строк" type="number" min="1" :max="TEXT_LIST_MAX_ROWS" class="w-40" @update:model-value="rowBoundsError = ''" />
+      </div>
+      <p v-if="rowBoundsError" role="alert" class="text-sm text-red-600">{{ rowBoundsError }}</p>
+      <p class="text-xs text-ink-muted">
+        Пустые строки не учитываются. Если минимум не указан, для ответа достаточно одной строки.
+        Если максимум не указан, можно заполнить до {{ TEXT_LIST_MAX_ROWS }} строк.
+      </p>
     </div>
 
     <div v-if="form.question_type === 'number'" class="flex flex-wrap gap-4">

@@ -22,8 +22,13 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+TEXT_LIST = 'text_list'
+TEXT_LIST_MAX_ROWS = 50
+TEXT_LIST_ROW_LENGTH = 500
+
 QUESTION_TYPES = (
     'text',  # Текст
+    TEXT_LIST,  # Список текстовых ответов
     'rich_text',  # Форматированный текст
     'matrix_multiple',  # Несколько вариантов в каждой строке
     'matrix_single',  # Один вариант в каждой строке
@@ -148,6 +153,8 @@ class Question(IdMixin, TimestampMixin, Base):
     max_number: Mapped[float | None] = mapped_column(Float)
     is_options_shuffled: Mapped[bool] = mapped_column(Boolean, default=False, server_default='false')
 
+    min_rows: Mapped[int | None] = mapped_column(Integer)
+    max_rows: Mapped[int | None] = mapped_column(Integer)
     matrix_rows: Mapped[list[dict[str, str]]] = mapped_column(JSONB, default=list, server_default='[]')
 
     survey: Mapped[Survey] = relationship(back_populates='questions')

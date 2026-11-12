@@ -24,11 +24,11 @@ from app.modules.results.schemas import (
     RankingStat,
     TextAnswer,
 )
-from app.modules.surveys.models import MATRIX_TYPES, SCALE_GENERATED, Publishing, Question, Scale
+from app.modules.surveys.models import MATRIX_TYPES, SCALE_GENERATED, TEXT_LIST, Publishing, Question, Scale
 
 CHOICE = ('single_choice', 'multiple_choice')
 NUMERIC = ('number', 'scale')
-TEXTS = ('text', 'rich_text')
+TEXTS = ('text', 'rich_text', TEXT_LIST)
 
 
 @dataclass
@@ -125,11 +125,14 @@ def summarize(data: Dataset) -> PublishingResults:
             result.answered = len(ranked)
             result.ranking = _ranking(question, ranked)
         elif kind in TEXTS:
-            texts = [
-                TextAnswer(response_id=a.response_id, text=a.text_value or a.rich_text_value)
+            values = [
+                (
+                    a.response_id,
+                    answer_text(question, a, None) if kind == TEXT_LIST else a.text_value or a.rich_text_value,
+                )
                 for a in given
-                if a.text_value or a.rich_text_value
             ]
+            texts = [TextAnswer(response_id=response_id, text=value) for response_id, value in values if value]
             result.answered = len(texts)
             result.texts = texts
         results.append(result)
@@ -219,6 +222,8 @@ def answer_text(question: Question, answer: Answer | None, scale: Scale | None) 
     kind = question.question_type
     if kind == 'text':
         return answer.text_value or ''
+    if kind == TEXT_LIST:
+        return '\n'.join(answer.text_rows)
     if kind == 'rich_text':
         return answer.rich_text_value or ''
     if kind == 'single_choice':
@@ -241,6 +246,7 @@ def export_xlsx(data: Dataset) -> bytes:
     sheet = book.active
     sheet.title = 'Ответы'
     personal = not data.publishing.is_anonymous
+    text_list_columns = []
     header = ['№']
     if personal:
         header += ['Отправлен', 'ФИО', 'Email', 'Класс']
@@ -249,6 +255,8 @@ def export_xlsx(data: Dataset) -> bytes:
             header.extend(f"{question.text} / {row['title']}" for row in question.matrix_rows)
         else:
             header.append(question.text)
+            if question.question_type == TEXT_LIST:
+                text_list_columns.append(len(header))
     sheet.append(header)
     for number, response in enumerate(data.responses, 1):
         by_question = {a.question_id: a for a in response.answers}
@@ -276,11 +284,15 @@ def export_xlsx(data: Dataset) -> bytes:
             else:
                 row.append(answer_text(question, answer, data.scales.get(question.scale_id)))
         sheet.append(row)
+        for column in text_list_columns:
+            sheet.cell(row=sheet.max_row, column=column).alignment = Alignment(wrap_text=True, vertical='top')
     for cell in sheet[1]:
         cell.font = Font(bold=True)
         cell.alignment = Alignment(wrap_text=True, vertical='top')
     for index in range(1, len(header) + 1):
         sheet.column_dimensions[get_column_letter(index)].width = 14 if index <= 2 else 32
+    for column in text_list_columns:
+        sheet.column_dimensions[get_column_letter(column)].width = 40
     sheet.freeze_panes = 'C2' if personal else 'B2'
 
     summary = book.create_sheet('Сводка')

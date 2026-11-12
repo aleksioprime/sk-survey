@@ -24,7 +24,17 @@ from app.modules.responses.schemas import (
     ResponseState,
     StartResult,
 )
-from app.modules.surveys.models import MATRIX_TYPES, SCALE_GENERATED, Publishing, Question, Scale, Section, Survey
+from app.modules.surveys.models import (
+    MATRIX_TYPES,
+    SCALE_GENERATED,
+    TEXT_LIST,
+    TEXT_LIST_MAX_ROWS,
+    Publishing,
+    Question,
+    Scale,
+    Section,
+    Survey,
+)
 from app.modules.surveys.schemas import ScaleOut, SectionOut
 
 RICH_TEXT_TAGS = {'p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'ul', 'ol', 'li', 'blockquote', 'a', 'h3', 'h4'}
@@ -200,6 +210,7 @@ async def _apply(db: AsyncSession, question: Question, answer: Answer, data: Ans
     answer.selected_options = []
     answer.ranking = []
     answer.matrix_choices = {}
+    answer.text_rows = []
     answer.is_skipped = data.is_skipped and not question.is_required
     if answer.is_skipped:
         return
@@ -208,6 +219,12 @@ async def _apply(db: AsyncSession, question: Question, answer: Answer, data: Ans
     kind = question.question_type
     if kind == 'text':
         answer.text_value = (data.text_value or '').strip() or None
+    elif kind == TEXT_LIST:
+        rows = [row for value in data.text_rows if (row := value.strip())]
+        maximum = question.max_rows or TEXT_LIST_MAX_ROWS
+        if len(rows) > maximum:
+            raise AnswerError(f'Максимум заполненных строк: {maximum}')
+        answer.text_rows = rows
     elif kind == 'rich_text':
         clean = nh3.clean(data.rich_text_value or '', tags=RICH_TEXT_TAGS).strip()
         answer.rich_text_value = clean or None
@@ -305,8 +322,18 @@ async def submit(db: AsyncSession, response: Response) -> Publishing:
     await db.refresh(response, ['answers'])
     by_question = {a.question_id: a for a in response.answers}
     missing = []
+    row_errors = {}
     for question in await active_questions(db, publishing.survey_id):
         answer = by_question.get(question.id)
+        if question.question_type == TEXT_LIST:
+            count = len(answer.text_rows) if answer and not answer.is_skipped else 0
+            minimum = question.min_rows or 1
+            maximum = question.max_rows or TEXT_LIST_MAX_ROWS
+            if (question.is_required or count) and count < minimum:
+                row_errors[question.id] = f'Минимум заполненных строк: {minimum}'
+            elif count > maximum:
+                row_errors[question.id] = f'Максимум заполненных строк: {maximum}'
+            continue
         complete = is_answered(answer)
         if question.question_type in MATRIX_TYPES:
             complete = bool(answer) and all(row['id'] in answer.matrix_choices for row in question.matrix_rows)
@@ -317,6 +344,15 @@ async def submit(db: AsyncSession, response: Response) -> Publishing:
             count = len(answer.selected_options) + len(answer.ranking)
             if count and count < question.min_selections:
                 missing.append(question.id)
+    if row_errors:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            {
+                'message': 'Проверьте число заполненных строк и обязательные вопросы',
+                'question_ids': [*missing, *row_errors],
+                'question_errors': row_errors,
+            },
+        )
     if missing:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
