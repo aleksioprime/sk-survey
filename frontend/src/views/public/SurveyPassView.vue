@@ -13,8 +13,6 @@ import {
   fetchResponse,
   forgetQuestion,
   forgetResponseToken,
-  hasCompleted,
-  markCompleted,
   rememberQuestion,
   rememberResponseToken,
   saveAnswer,
@@ -193,11 +191,6 @@ onMounted(async () => {
     stage.value = 'error'
     return
   }
-  if (!props.preview && survey.value.is_anonymous && hasCompleted(props.token)) {
-    thankYou.value = survey.value.thank_you_text
-    stage.value = 'done'
-    return
-  }
   const saved = props.preview ? null : savedResponseToken(props.token)
   if (saved) {
     try {
@@ -207,7 +200,6 @@ onMounted(async () => {
       if (state.status === 'submitted') {
         thankYou.value = survey.value.thank_you_text
         forgetQuestion(responseId.value)
-        if (survey.value.is_anonymous) markCompleted(props.token)
         stage.value = 'done'
         return
       }
@@ -373,8 +365,8 @@ async function submit() {
     thankYou.value = result.thank_you_text
     stage.value = 'done'
     forgetQuestion(responseId.value)
-    if (survey.value.is_anonymous) markCompleted(props.token)
-    else forgetResponseToken(props.token)
+    // У анонимной попытки ключ нужен для проверки статуса при повторном открытии.
+    if (!survey.value.is_anonymous) forgetResponseToken(props.token)
     window.scrollTo({ top: 0 })
   } catch (e) {
     const detail = e?.response?.data?.detail

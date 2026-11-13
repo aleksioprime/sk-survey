@@ -53,25 +53,6 @@ export function forgetQuestion(responseId) {
   }
 }
 
-const completedKey = (token) => `sks-completed:${token}`
-
-export function hasCompleted(publicToken) {
-  try {
-    return localStorage.getItem(completedKey(publicToken)) === 'yes'
-  } catch {
-    return false
-  }
-}
-
-export function markCompleted(publicToken) {
-  try {
-    localStorage.setItem(completedKey(publicToken), 'yes')
-    forgetResponseToken(publicToken)
-  } catch {
-    // Если отметку записать не удалось, оставляем ключ для проверки статуса.
-  }
-}
-
 export async function fetchPreview(surveyId) {
   return (await http.get(`/v1/surveys/${surveyId}/preview`)).data
 }

@@ -24,6 +24,7 @@ async def _answer(client, built, overrides=None, submit=True):
         assert response.status_code == 200, response.text
     if submit:
         assert (await client.post('/api/v1/public/responses/current/submit', headers=headers)).status_code == 200
+    return headers
 
 
 async def test_summary(db, client):
@@ -144,7 +145,10 @@ async def test_delete_individual_response(db, client, monkeypatch):
     url = f'/api/v1/publishings/{built["publishing"]["id"]}'
     other_url = f'/api/v1/publishings/{other["publishing"]["id"]}'
     async with other_client(client) as guest:
-        await _answer(guest, built)
+        headers = await _answer(guest, built)
+        state = await guest.get('/api/v1/public/responses/current', headers=headers)
+        assert state.json()['status'] == 'submitted'
+        assert state.headers['Cache-Control'] == 'no-store'
         await _answer(guest, built, submit=False)
     page = (await client.get(f'{url}/responses')).json()
     response_id = page['items'][0]['id']
@@ -162,6 +166,8 @@ async def test_delete_individual_response(db, client, monkeypatch):
     assert (await client.delete(f'{other_url}/responses/{response_id}')).status_code == 404
     assert (await client.delete(response_url)).status_code == 204
     assert (await client.delete(response_url)).status_code == 404
+    async with other_client(client) as guest:
+        assert (await guest.get('/api/v1/public/responses/current', headers=headers)).status_code == 401
     summary = (await client.get(f'{url}/results')).json()
     assert summary['responses'] == 0 and all(q['answered'] == 0 for q in summary['questions'])
     remaining = (await client.get(f'{url}/responses', params={'include_in_progress': True, 'page': 2})).json()

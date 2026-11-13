@@ -120,6 +120,44 @@ describe('возобновление опроса', () => {
     vi.mocked(api.fetchResponse).mockResolvedValue({ response_id: 42, status: 'submitted', answers: [] })
     await openSurvey()
     expect(wrapper.text()).toContain('Ответы отправлены')
-    expect(api.hasCompleted('public')).toBe(true)
+    expect(api.savedResponseToken('public')).toBe('draft')
+  })
+
+  it('после удаления отправленной попытки позволяет начать заново', async () => {
+    vi.mocked(api.fetchResponse).mockResolvedValueOnce({ response_id: 42, status: 'submitted', answers: [] })
+    await openSurvey()
+    expect(wrapper.text()).toContain('Ответы отправлены')
+    wrapper.unmount()
+
+    vi.mocked(api.fetchResponse).mockRejectedValueOnce({ response: { status: 401 } })
+    vi.mocked(api.startResponse).mockResolvedValueOnce({
+      response_id: 43, response_token: 'new-draft', status: 'in_progress', answers: [],
+    })
+    await openSurvey()
+    expect(wrapper.text()).toContain('Вступление')
+    expect(api.savedResponseToken('public')).toBeNull()
+    await wrapper.findAll('button').find((button) => button.text() === 'Начать').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('article').text()).toContain('Вопрос 1?')
+    expect(api.savedResponseToken('public')).toBe('new-draft')
+  })
+
+  it('не использует старую отметку без ключа попытки', async () => {
+    api.forgetResponseToken('public')
+    localStorage.setItem('sks-completed:public', 'yes')
+    await openSurvey()
+    expect(wrapper.text()).toContain('Вступление')
+    expect(wrapper.text()).not.toContain('Ответы отправлены')
+  })
+
+  it('сохраняет ключ после отправки анонимной попытки', async () => {
+    const survey = await api.fetchPublicSurvey('public')
+    vi.mocked(api.fetchPublicSurvey).mockResolvedValueOnce({ ...survey, questions: [questions[0]] })
+    vi.mocked(api.submitResponse).mockResolvedValueOnce({ status: 'submitted', thank_you_text: 'Спасибо!' })
+    await openSurvey()
+    await wrapper.findAll('button').find((button) => button.text() === 'Отправить ответы').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('Ответы отправлены')
+    expect(api.savedResponseToken('public')).toBe('draft')
   })
 })

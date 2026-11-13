@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Header, HTTPException, Request, status
+from fastapi import APIRouter, Header, HTTPException, Request, Response, status
 from sk_common.auth.router import client_info
 from sk_common.deps import CurrentUser, Db, OptionalUser
 from sk_common.redis import get_redis, hit_limit
@@ -50,8 +50,9 @@ async def start(token: str, request: Request, db: Db, user: OptionalUser) -> Sta
 
 
 @router.get('/responses/current', response_model=ResponseState, summary='Сохранённые ответы прохождения')
-async def current(db: Db, x_response_token: ResponseToken = None) -> ResponseState:
+async def current(db: Db, http_response: Response, x_response_token: ResponseToken = None) -> ResponseState:
     response = await service.response_by_token(db, x_response_token)
+    http_response.headers['Cache-Control'] = 'no-store'
     return service.response_state(response)
 
 
