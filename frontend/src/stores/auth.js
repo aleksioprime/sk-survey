@@ -30,15 +30,19 @@ export const useAuthStore = defineStore('auth', () => {
   function setUser(value) {
     user.value = value
     loaded.value = true
+    if (!value) {
+      canCreateSurveys.value = false
+      hasPassword.value = false
+    }
   }
 
   async function logout() {
     try {
       await api.logout()
-    } finally {
-      user.value = null
-      canCreateSurveys.value = false
+    } catch (error) {
+      if (error?.response?.status !== 401) throw error
     }
+    setUser(null)
   }
 
   return { user, canCreateSurveys, hasPassword, loaded, isAuthenticated, isAdmin, displayName, load, setUser, logout }
