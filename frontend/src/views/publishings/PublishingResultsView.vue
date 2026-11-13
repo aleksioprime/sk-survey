@@ -1,12 +1,11 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
-import { errorMessage, SkeletonPage, UiBadge, UiBreadcrumbs, UiButton, UiCard, UiSwitch } from 'sk-ui'
+import { errorMessage, SkeletonPage, UiBadge, UiBreadcrumbs, UiButton, UiCard, UiSwitch, useUrlQuery } from 'sk-ui'
 import { exportUrl, getIndividualResponses, getPublishing, getResults } from '@/api/surveys'
 import SurveyArchiveBadge from '@/components/SurveyArchiveBadge.vue'
 import QuestionTypeIcon from '@/components/questions/QuestionTypeIcon.vue'
 import ChoiceBreakdown from '@/components/questions/ChoiceBreakdown.vue'
 import { QUESTION_TYPES } from '@/utils/questionTypes'
-import { useUrlQuery } from '@/utils/useUrlQuery'
 import PublishingResponseList from './PublishingResponseList.vue'
 
 const props = defineProps({ id: { type: String, required: true } })

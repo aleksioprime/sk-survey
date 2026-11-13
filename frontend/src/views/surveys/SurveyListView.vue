@@ -1,11 +1,10 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
-import { errorMessage, SkeletonTable, UiBadge, UiButton, UiDialog, UiInput, UiSelect } from 'sk-ui'
+import { errorMessage, SkeletonTable, UiBadge, UiButton, UiDialog, UiInput, UiSelect, useUrlQuery } from 'sk-ui'
 import { createSurvey, listSurveys } from '@/api/surveys'
 import SurveyArchiveBadge from '@/components/SurveyArchiveBadge.vue'
 import { useAuthStore } from '@/stores/auth'
-import { useUrlQuery } from '@/utils/useUrlQuery'
 
 const router = useRouter()
 const auth = useAuthStore()
