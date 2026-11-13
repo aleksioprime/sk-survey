@@ -738,7 +738,7 @@ const textarea = 'rounded-control border border-line bg-surface p-3 outline-none
             Текст после отправки
             <textarea v-model="settings.thank_you_text" rows="3" :class="[textarea, { 'ui-changed': settingChanged('thank_you_text') }]" />
           </label>
-          <UiSwitch v-model="settings.is_anonymous" label="Новые публикации анонимны" class="justify-self-start" :class="{ 'ui-changed': settingChanged('is_anonymous') }" />
+          <UiSwitch v-model="settings.is_anonymous" label="Новые публикации анонимны" class="justify-self-start px-2" :class="{ 'ui-changed': settingChanged('is_anonymous') }" />
         </fieldset>
         <p v-if="settingsError" role="alert" class="rounded-control bg-red-100 px-3 py-2 text-sm text-red-800">{{ settingsError }}</p>
         <UiFormActions v-if="settingsDirty" :loading="settingsSaving" :disabled="activeSaving || copying || accessSaving" @cancel="cancelSettings" />

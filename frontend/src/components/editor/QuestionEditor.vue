@@ -1,6 +1,6 @@
 <script setup>
-import { computed, ref, watch } from 'vue'
-import { UiButton, UiDialog, UiFormActions, UiInput, UiSelect } from 'sk-ui'
+import { computed, ref, useId, watch } from 'vue'
+import { UiButton, UiDialog, UiFormActions, UiInput, UiSelect, UiSwitch } from 'sk-ui'
 import QuestionTypeIcon from '@/components/questions/QuestionTypeIcon.vue'
 import { MATRIX_TYPES, QUESTION_TYPES, TEXT_LIST, TEXT_LIST_MAX_ROWS } from '@/utils/questionTypes'
 import ScaleEditor from './ScaleEditor.vue'
@@ -42,6 +42,8 @@ const isMatrix = computed(() => MATRIX_TYPES.includes(form.value.question_type))
 const lockedMatrix = computed(() => isMatrix.value && answered.value)
 const hasOptions = computed(() => isMatrix.value || ['single_choice', 'multiple_choice', 'ranking'].includes(form.value.question_type))
 const supportsExclusion = computed(() => hasOptions.value && form.value.question_type !== 'ranking')
+const exclusionHintId = useId()
+const exclusionHint = ref(null)
 const bulk = ref(null)
 const editorField = 'field-sizing-content max-h-64 min-w-0 rounded-control border border-line bg-surface outline-none focus:border-brand-500'
 const initial = Object.fromEntries(Object.entries(form.value).map(([key, value]) => [key, JSON.stringify(value)]))
@@ -134,6 +136,12 @@ function save() {
 <template>
   <form class="grid min-w-0 gap-4 rounded-card border border-line bg-surface p-4 sm:p-5" @submit.prevent="save">
     <fieldset class="grid min-w-0 gap-4" :disabled="saving">
+      <UiSwitch
+        v-model="form.is_active"
+        label="Показывать в опросе"
+        class="justify-self-start px-2"
+        :class="changed('is_active')"
+      />
       <div class="grid gap-1.5">
         <label class="text-sm font-medium" for="q-text">Текст вопроса</label>
         <textarea id="q-text" v-model="form.text" rows="2" required :class="[editorField, changed('text')]" class="min-h-18 p-3" />
@@ -174,7 +182,7 @@ function save() {
           </div>
           <p v-if="scaleMissing" role="alert" class="text-sm text-red-600">Выберите шкалу</p>
         </div>
-        <div class="grid gap-2" :class="changed('ranges')">
+        <div class="ui-change-group grid gap-2" :class="changed('ranges')">
           <p class="text-sm font-medium">Диапазоны для отчёта <span class="font-normal text-ink-muted">- например, «1–3: низкая»</span></p>
           <div v-for="(range, index) in form.ranges" :key="index" class="flex flex-wrap items-center gap-2">
             <UiInput v-model.number="range.from_value" type="number" class="w-20" aria-label="От" placeholder="от" />
@@ -187,14 +195,14 @@ function save() {
         </div>
       </div>
 
-      <div v-if="isMatrix" :class="changed('matrix_rows')" class="grid gap-2">
+      <div v-if="isMatrix" :class="changed('matrix_rows')" class="ui-change-group grid gap-2">
         <p class="text-sm font-medium">Строки матрицы</p>
         <p v-if="lockedMatrix" class="text-xs text-ink-muted">После первого ответа строки и варианты менять нельзя.</p>
-        <div v-for="(row, index) in form.matrix_rows" :key="row.id" class="flex items-center gap-2">
+        <div v-for="(row, index) in form.matrix_rows" :key="row.id" class="flex flex-wrap items-center gap-2">
           <textarea
             v-model="row.title"
             rows="1"
-            class="min-h-10 flex-1 px-3 py-2"
+            class="min-h-10 flex-1 basis-full px-3 py-2 sm:basis-0"
             :class="editorField"
             :aria-label="`Строка ${index + 1}`"
             :disabled="lockedMatrix"
@@ -209,15 +217,14 @@ function save() {
         <UiButton v-if="!lockedMatrix" size="sm" variant="ghost" class="justify-self-start" @click="addRow">+ Строка</UiButton>
       </div>
 
-      <div v-if="hasOptions" :class="changed('options')" class="grid gap-2">
+      <div v-if="hasOptions" :class="changed('options')" class="ui-change-group grid gap-2">
         <p class="text-sm font-medium">{{ isMatrix ? 'Общие варианты для всех строк' : 'Варианты ответа' }}</p>
-        <p v-if="supportsExclusion" class="text-xs text-ink-muted">Исключённые варианты показываются отдельно и не входят в базу сравнения.</p>
         <div v-for="(option, index) in form.options" :key="option.id || `new-${index}`" class="grid gap-1 rounded-control border border-line p-2">
           <div class="flex flex-wrap items-center gap-2">
             <textarea
               v-model="option.title"
               rows="1"
-              class="min-h-10 flex-1 px-3 py-2"
+              class="min-h-10 flex-1 basis-full px-3 py-2 sm:basis-0"
               :class="[editorField, option.is_active === false ? 'text-ink-muted line-through' : '']"
               :disabled="lockedMatrix"
               :aria-label="`Вариант ${index + 1}`"
@@ -232,10 +239,29 @@ function save() {
               <UiButton size="sm" variant="ghost" class="text-ink-muted hover:text-red-600" :aria-label="`Удалить вариант ${index + 1}`" @click="removeOption(index)">✕</UiButton>
             </template>
           </div>
-          <label v-if="supportsExclusion" class="flex items-center gap-2 text-xs text-ink-muted">
-            <input v-model="option.exclude_from_base" type="checkbox" class="accent-brand-600" :aria-label="`Исключить вариант ${index + 1} из базы`" />
-            Исключить из базы
-          </label>
+          <div v-if="supportsExclusion" class="relative min-w-0" @mouseleave="exclusionHint = null" @keydown.esc.stop="exclusionHint = null">
+            <label class="flex w-fit items-center gap-2 text-xs text-ink-muted" @mouseenter="exclusionHint = index">
+              <input
+                v-model="option.exclude_from_base"
+                type="checkbox"
+                class="accent-brand-600"
+                :aria-label="`Считать отдельно в сводке (вариант ${index + 1})`"
+                :aria-describedby="`${exclusionHintId}-${index}`"
+                @focus="exclusionHint = index"
+                @blur="exclusionHint = null"
+              />
+              Считать отдельно в сводке
+            </label>
+            <p
+              v-show="exclusionHint === index"
+              :id="`${exclusionHintId}-${index}`"
+              role="tooltip"
+              class="absolute start-0 bottom-full z-20 w-full max-w-xs rounded-control border border-line bg-surface p-2.5 text-xs text-ink shadow-md"
+            >
+              Например, для «Не могу сравнить». Доля этого варианта считается от всех ответивших.
+              Доли остальных вариантов считаются среди тех, кто выбрал хотя бы один вариант без этой отметки.
+            </p>
+          </div>
         </div>
         <div v-if="!lockedMatrix" class="flex flex-wrap gap-2">
           <UiButton size="sm" variant="ghost" @click="addOption">+ Вариант</UiButton>
@@ -252,17 +278,17 @@ function save() {
           </div>
         </div>
         <p v-if="answered && !isMatrix" class="text-xs text-ink-muted">Варианты, которые уже выбирали, при удалении выключаются и остаются в результатах.</p>
-        <label v-if="!isMatrix" class="flex items-center gap-2 text-sm" :class="changed('is_options_shuffled')">
+        <label v-if="!isMatrix" class="flex items-center gap-2 px-2 py-1 text-sm" :class="changed('is_options_shuffled')">
           <input v-model="form.is_options_shuffled" type="checkbox" class="accent-brand-600" /> Показывать варианты в случайном порядке
         </label>
       </div>
 
-      <div v-if="hasSelections" :class="changed('min_selections', 'max_selections')" class="flex flex-wrap gap-4">
+      <div v-if="hasSelections" :class="changed('min_selections', 'max_selections')" class="ui-change-group flex flex-wrap gap-4">
         <UiInput v-model="form.min_selections" label="Минимум выборов" type="number" min="0" class="w-40" />
         <UiInput v-model="form.max_selections" label="Максимум выборов" type="number" min="1" class="w-40" />
       </div>
 
-      <div v-if="isTextList" :class="changed('min_rows', 'max_rows')" class="grid gap-2">
+      <div v-if="isTextList" :class="changed('min_rows', 'max_rows')" class="ui-change-group grid gap-2">
         <div class="flex flex-wrap gap-4">
           <UiInput v-model="form.min_rows" label="Минимум строк" type="number" min="1" :max="TEXT_LIST_MAX_ROWS" class="w-40" @update:model-value="rowBoundsError = ''" />
           <UiInput v-model="form.max_rows" label="Максимум строк" type="number" min="1" :max="TEXT_LIST_MAX_ROWS" class="w-40" @update:model-value="rowBoundsError = ''" />
@@ -274,15 +300,12 @@ function save() {
         </p>
       </div>
 
-      <div v-if="form.question_type === 'number'" :class="changed('min_number', 'max_number')" class="flex flex-wrap gap-4">
+      <div v-if="form.question_type === 'number'" :class="changed('min_number', 'max_number')" class="ui-change-group flex flex-wrap gap-4">
         <UiInput v-model="form.min_number" label="Минимальное число" type="number" class="w-40" />
         <UiInput v-model="form.max_number" label="Максимальное число" type="number" class="w-40" />
       </div>
 
-      <div class="flex flex-wrap gap-5 text-sm">
-        <label class="flex items-center gap-2" :class="changed('is_required')"><input v-model="form.is_required" type="checkbox" class="accent-brand-600" /> Обязательный</label>
-        <label class="flex items-center gap-2" :class="changed('is_active')"><input v-model="form.is_active" type="checkbox" class="accent-brand-600" /> Показывать в опросе</label>
-      </div>
+      <label class="flex w-fit items-center gap-2 px-2 py-1 text-sm" :class="changed('is_required')"><input v-model="form.is_required" type="checkbox" class="accent-brand-600" /> Обязательный</label>
     </fieldset>
 
     <p v-if="error" role="alert" class="rounded-control bg-red-100 px-3 py-2 text-sm text-red-800">{{ error }}</p>
