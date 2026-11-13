@@ -144,6 +144,10 @@ function save() {
         :class="changed('is_active')"
         :disabled="saving"
       />
+      <label class="flex min-h-9 w-fit items-center gap-2 px-2 py-1 text-sm" :class="changed('is_required')">
+        <input v-model="form.is_required" type="checkbox" class="accent-brand-600" :disabled="saving" />
+        Обязательный
+      </label>
       <slot name="actions" />
     </div>
   </div>
@@ -311,8 +315,6 @@ function save() {
         <UiInput v-model="form.min_number" label="Минимальное число" type="number" class="w-40" />
         <UiInput v-model="form.max_number" label="Максимальное число" type="number" class="w-40" />
       </div>
-
-      <label class="flex w-fit items-center gap-2 px-2 py-1 text-sm" :class="changed('is_required')"><input v-model="form.is_required" type="checkbox" class="accent-brand-600" /> Обязательный</label>
     </fieldset>
 
     <p v-if="error" role="alert" class="rounded-control bg-red-100 px-3 py-2 text-sm text-red-800">{{ error }}</p>
