@@ -27,6 +27,32 @@ export function forgetResponseToken(publicToken) {
   }
 }
 
+const positionKey = (responseId) => `sks-position:${responseId}`
+
+export function savedQuestion(responseId) {
+  try {
+    return localStorage.getItem(positionKey(responseId))
+  } catch {
+    return null
+  }
+}
+
+export function rememberQuestion(responseId, questionId) {
+  try {
+    localStorage.setItem(positionKey(responseId), String(questionId))
+  } catch {
+    // Без хранилища позиция определяется по сохранённым ответам.
+  }
+}
+
+export function forgetQuestion(responseId) {
+  try {
+    localStorage.removeItem(positionKey(responseId))
+  } catch {
+    // Хранилище может быть недоступно.
+  }
+}
+
 const completedKey = (token) => `sks-completed:${token}`
 
 export function hasCompleted(publicToken) {

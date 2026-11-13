@@ -3,7 +3,7 @@
  * Прохождение опроса по ссылке /s/<токен>. Ответы сохраняются сразу (через полсекунды после изменения),
  * ключ прохождения хранится в браузере: можно закрыть вкладку и вернуться.
  */
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { skolstreamLoginUrl } from '@/api/auth'
 import { BrandMark, errorMessage, SchoolFooter, SkeletonPage, UiButton, UiCard } from 'sk-ui'
@@ -11,11 +11,14 @@ import {
   fetchPreview,
   fetchPublicSurvey,
   fetchResponse,
+  forgetQuestion,
   forgetResponseToken,
   hasCompleted,
   markCompleted,
+  rememberQuestion,
   rememberResponseToken,
   saveAnswer,
+  savedQuestion,
   savedResponseToken,
   startResponse,
   submitResponse,
@@ -98,6 +101,23 @@ function optionsFor(question) {
 
 const hasMatrix = computed(() => current.value?.questions.some((q) => MATRIX_TYPES.includes(q.question_type)))
 
+function hasProgress(answer) {
+  if (!answer) return false
+  return Boolean(
+    answer.is_skipped ||
+      answer.text_value?.trim() ||
+      answer.rich_text_value ||
+      answer.number_value != null ||
+      answer.boolean_value != null ||
+      answer.scale_item_id ||
+      answer.option_id ||
+      answer.option_ids?.length ||
+      answer.ranking?.length ||
+      Object.keys(answer.matrix_choices).length ||
+      countTextRows(answer.text_rows),
+  )
+}
+
 function isAnswered(question, answer) {
   if (!answer) return false
   if (answer.is_skipped) return !question.is_required
@@ -107,16 +127,39 @@ function isAnswered(question, answer) {
     const selected = (row) => Object.hasOwn(choices, row.id) && choices[row.id].length > 0
     return question.is_required ? question.matrix_rows.every(selected) : question.matrix_rows.some(selected)
   }
-  return Boolean(
-    answer.text_value?.trim() ||
-      answer.rich_text_value ||
-      answer.number_value != null ||
-      answer.boolean_value != null ||
-      answer.scale_item_id ||
-      answer.option_id ||
-      answer.option_ids?.length ||
-      answer.ranking?.length,
-  )
+  return hasProgress(answer)
+}
+
+function questionAnchor(questionId) {
+  return `survey-question-${questionId}`
+}
+
+async function resumeQuestions() {
+  const parts = pages.value
+  const lastSavedPage = parts.findLastIndex((part) => part.questions.some((q) => hasProgress(answers[q.id])))
+  if (lastSavedPage < 0) return false
+
+  const saved = savedQuestion(responseId.value)
+  const savedPage = parts.findIndex((part) => part.questions.some((q) => String(q.id) === saved))
+  let target = savedPage >= 0 ? saved : null
+  if (savedPage >= 0) {
+    page.value = savedPage
+  } else {
+    page.value = lastSavedPage
+    const unfinished = current.value.questions.find((q) => !isAnswered(q, answers[q.id]))
+    if (unfinished) target = unfinished.id
+    else if (!isLast.value) page.value += 1
+    else target = current.value.questions.at(-1).id
+  }
+
+  stage.value = 'questions'
+  await nextTick()
+  if (target != null && current.value.questions.length > 1) {
+    document.getElementById(questionAnchor(target))?.scrollIntoView()
+  } else {
+    window.scrollTo({ top: 0 })
+  }
+  return true
 }
 
 function applyState(state) {
@@ -163,10 +206,12 @@ onMounted(async () => {
       applyState(state)
       if (state.status === 'submitted') {
         thankYou.value = survey.value.thank_you_text
+        forgetQuestion(responseId.value)
         if (survey.value.is_anonymous) markCompleted(props.token)
         stage.value = 'done'
         return
       }
+      if (await resumeQuestions()) return
     } catch (e) {
       if (e?.response?.status !== 401) {
         loadError.value = errorMessage(e)
@@ -193,9 +238,11 @@ async function begin() {
       applyState(started)
       if (started.status === 'submitted') {
         thankYou.value = survey.value.thank_you_text
+        forgetQuestion(responseId.value)
         stage.value = 'done'
         return
       }
+      if (await resumeQuestions()) return
     }
     stage.value = 'questions'
     window.scrollTo({ top: 0 })
@@ -210,6 +257,7 @@ function onChange(question, value) {
   answers[question.id] = value
   errors[question.id] = ''
   if (props.preview) return
+  rememberQuestion(responseId.value, question.id)
   pending.set(question.id, value)
   clearTimeout(timers.get(question.id))
   timers.set(question.id, setTimeout(() => persist(question.id), 500))
@@ -292,6 +340,7 @@ async function goNext() {
   try {
     if (!(await flush())) return
     page.value += 1
+    rememberPage()
     window.scrollTo({ top: 0 })
   } finally {
     busy.value = false
@@ -300,7 +349,12 @@ async function goNext() {
 
 function goBack() {
   page.value -= 1
+  rememberPage()
   window.scrollTo({ top: 0 })
+}
+
+function rememberPage() {
+  if (!props.preview) rememberQuestion(responseId.value, current.value.questions[0].id)
 }
 
 async function submit() {
@@ -318,6 +372,7 @@ async function submit() {
     const result = await submitResponse(responseToken.value)
     thankYou.value = result.thank_you_text
     stage.value = 'done'
+    forgetQuestion(responseId.value)
     if (survey.value.is_anonymous) markCompleted(props.token)
     else forgetResponseToken(props.token)
     window.scrollTo({ top: 0 })
@@ -399,6 +454,7 @@ async function submit() {
           <div class="grid gap-4">
             <article
               v-for="question in current.questions"
+              :id="questionAnchor(question.id)"
               :key="question.id"
               :data-has-error="!!errors[question.id]"
               class="rounded-card border bg-surface p-5"
