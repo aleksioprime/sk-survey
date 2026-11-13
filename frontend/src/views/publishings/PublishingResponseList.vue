@@ -2,8 +2,8 @@
 import { computed } from 'vue'
 import { UiBadge, UiButton } from 'sk-ui'
 
-const props = defineProps({ responses: { type: Object, required: true } })
-const emit = defineEmits(['page'])
+const props = defineProps({ responses: { type: Object, required: true }, canEdit: Boolean })
+const emit = defineEmits(['page', 'remove'])
 const pageCount = computed(() => Math.ceil((props.responses.responses + props.responses.in_progress) / props.responses.page_size))
 const attemptTime = new Intl.DateTimeFormat('ru-RU', {
   dateStyle: 'short',
@@ -15,7 +15,7 @@ const attemptTime = new Intl.DateTimeFormat('ru-RU', {
 <template>
   <p v-if="!responses.items.length" class="mt-10 text-center text-ink-muted">Ответов пока нет.</p>
   <div v-else class="mt-6 grid gap-3">
-    <details v-for="item in responses.items" :key="item.number" class="group min-w-0 rounded-card border border-line bg-surface">
+    <details v-for="item in responses.items" :key="item.id" class="group min-w-0 rounded-card border border-line bg-surface">
       <summary class="flex min-h-12 cursor-pointer list-none flex-wrap items-center justify-between gap-2 rounded-card px-4 py-3 hover:bg-brand-50">
         <span class="grid min-w-0 gap-1">
           <span class="flex flex-wrap items-center gap-2">
@@ -41,6 +41,9 @@ const attemptTime = new Intl.DateTimeFormat('ru-RU', {
         </div>
       </dl>
       <p v-else class="border-t border-line px-4 py-4 text-sm text-ink-muted">В этом прохождении пока нет ответов.</p>
+      <div v-if="canEdit" class="flex justify-end px-4 pb-4">
+        <UiButton size="sm" variant="ghost" class="text-red-700" @click="emit('remove', item)">Удалить ответ</UiButton>
+      </div>
     </details>
     <nav v-if="pageCount > 1" aria-label="Страницы ответов" class="flex flex-wrap items-center gap-3 text-sm">
       <UiButton size="sm" :disabled="responses.page === 1" @click="emit('page', responses.page - 1)">Назад</UiButton>

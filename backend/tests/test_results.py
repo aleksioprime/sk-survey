@@ -91,7 +91,17 @@ async def test_individual_responses(db, client, monkeypatch):
     page = (await client.get(url)).json()
     assert (page['page'], page['responses'], page['in_progress']) == (1, 1, 0)
     answer = page['items'][0]
-    assert set(answer) == {'number', 'submitted', 'started_at', 'submitted_at', 'respondent', 'study_class', 'answers'}
+    assert set(answer) == {
+        'id',
+        'number',
+        'submitted',
+        'started_at',
+        'submitted_at',
+        'respondent',
+        'study_class',
+        'answers',
+    }
+    assert answer['id'].isdigit()
     assert answer['submitted']
     assert datetime.fromisoformat(answer['started_at']) <= datetime.fromisoformat(answer['submitted_at'])
     assert answer['respondent'] is None and answer['study_class'] is None
@@ -124,6 +134,39 @@ async def test_results_access(db, client):
         assert (await stranger.get(f'{base_url}/results')).status_code == 200
         assert (await stranger.get(f'{base_url}/responses')).status_code == 200
         assert (await stranger.get(other_url)).status_code == 404
+
+
+async def test_delete_individual_response(db, client, monkeypatch):
+    monkeypatch.setattr(service, 'RESPONSES_PER_PAGE', 1)
+    await login_employee(db, client)
+    built = await build_survey(client)
+    other = await build_survey(client)
+    url = f'/api/v1/publishings/{built["publishing"]["id"]}'
+    other_url = f'/api/v1/publishings/{other["publishing"]["id"]}'
+    async with other_client(client) as guest:
+        await _answer(guest, built)
+        await _answer(guest, built, submit=False)
+    page = (await client.get(f'{url}/responses')).json()
+    response_id = page['items'][0]['id']
+    response_url = f'{url}/responses/{response_id}'
+    async with other_client(client) as observer:
+        assert (await observer.delete(response_url)).status_code == 401
+        await login_employee(db, observer, email='observer@skolkovo.example.org')
+        update = await client.patch(
+            url, json={'observer_person_ids': [await _person_id(db, 'observer@skolkovo.example.org')]}
+        )
+        assert update.status_code == 200
+        assert (await observer.get(f'{url}/responses')).status_code == 200
+        assert (await observer.delete(response_url)).status_code == 403
+
+    assert (await client.delete(f'{other_url}/responses/{response_id}')).status_code == 404
+    assert (await client.delete(response_url)).status_code == 204
+    assert (await client.delete(response_url)).status_code == 404
+    summary = (await client.get(f'{url}/results')).json()
+    assert summary['responses'] == 0 and all(q['answered'] == 0 for q in summary['questions'])
+    remaining = (await client.get(f'{url}/responses', params={'include_in_progress': True, 'page': 2})).json()
+    assert remaining['page'] == 1 and remaining['in_progress'] == 1 and not remaining['items'][0]['submitted']
+    assert (await client.delete(f'{url}/responses/{remaining["items"][0]["id"]}')).status_code == 204
 
 
 async def _person_id(db, email):

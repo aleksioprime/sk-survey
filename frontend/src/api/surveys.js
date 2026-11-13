@@ -40,6 +40,7 @@ export const getResults = (id, includeInProgress = false) =>
   get(`/v1/publishings/${id}/results`, { params: { include_in_progress: includeInProgress } })
 export const getIndividualResponses = (id, includeInProgress, page) =>
   get(`/v1/publishings/${id}/responses`, { params: { include_in_progress: includeInProgress, page } })
+export const deleteIndividualResponse = (id, responseId) => http.delete(`/v1/publishings/${id}/responses/${responseId}`)
 export const exportUrl = (id, includeInProgress = false) =>
   `/api/v1/publishings/${id}/export.xlsx?include_in_progress=${includeInProgress}`
 

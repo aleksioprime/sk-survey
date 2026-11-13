@@ -1,6 +1,7 @@
+from typing import Annotated
 from urllib.parse import quote
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Path, Query
 from fastapi.responses import Response
 from sk_common.audit import record
 from sk_common.deps import CurrentUser, Db
@@ -28,6 +29,20 @@ async def individual_responses(
 ) -> IndividualResponses:
     publishing, _ = await viewable_publishing(db, publishing_id, user)
     return await service.individual_responses(db, publishing, include_in_progress, page)
+
+
+@router.delete('/{publishing_id}/responses/{response_id}', status_code=204, summary='Удалить отдельный ответ')
+async def delete_response(
+    publishing_id: int, response_id: Annotated[int, Path(gt=0, le=2**63 - 1)], db: Db, user: CurrentUser
+) -> Response:
+    publishing, can_edit = await viewable_publishing(db, publishing_id, user)
+    if not can_edit:
+        raise HTTPException(403, 'Удалять ответы могут только редакторы опроса')
+    if not await service.delete_response(db, publishing, response_id):
+        raise HTTPException(404, 'Ответ не найден')
+    record(db, 'publishing.response.delete', 'response', response_id, user.id, publishing_id=publishing.id)
+    await db.commit()
+    return Response(status_code=204)
 
 
 @router.get('/{publishing_id}/export.xlsx', summary='Ответы в Excel')

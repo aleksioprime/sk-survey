@@ -11,7 +11,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font
 from openpyxl.utils import get_column_letter
 from sk_common.people.models import User
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.responses.models import STATUS_SUBMITTED, Answer, Response
@@ -314,6 +314,7 @@ async def individual_responses(
         ]
         items.append(
             IndividualResponse(
+                id=str(response.id),
                 number=number,
                 submitted=response.status == STATUS_SUBMITTED,
                 started_at=response.created_at,
@@ -326,6 +327,15 @@ async def individual_responses(
     return IndividualResponses(
         page=page, page_size=RESPONSES_PER_PAGE, responses=submitted, in_progress=total - submitted, items=items
     )
+
+
+async def delete_response(db: AsyncSession, publishing: Publishing, response_id: int) -> bool:
+    deleted_id = await db.scalar(
+        delete(Response)
+        .where(Response.id == response_id, Response.publishing_id == publishing.id)
+        .returning(Response.id)
+    )
+    return deleted_id is not None
 
 
 def _excel_time(value: datetime | None) -> datetime | None:

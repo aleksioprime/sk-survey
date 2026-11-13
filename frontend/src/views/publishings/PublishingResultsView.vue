@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
-import { errorMessage, SkeletonPage, UiBadge, UiBreadcrumbs, UiButton, UiCard, UiSwitch, useUrlQuery } from 'sk-ui'
-import { exportUrl, getIndividualResponses, getPublishing, getResults } from '@/api/surveys'
+import { errorMessage, SkeletonPage, UiBadge, UiBreadcrumbs, UiButton, UiCard, UiConfirm, UiSwitch, useUrlQuery } from 'sk-ui'
+import { deleteIndividualResponse, exportUrl, getIndividualResponses, getPublishing, getResults } from '@/api/surveys'
 import SurveyArchiveBadge from '@/components/SurveyArchiveBadge.vue'
 import QuestionTypeIcon from '@/components/questions/QuestionTypeIcon.vue'
 import ChoiceBreakdown from '@/components/questions/ChoiceBreakdown.vue'
@@ -32,6 +32,33 @@ const breadcrumbs = computed(() => [
 ])
 const error = ref('')
 const textLimit = ref({})
+const removing = ref(null)
+const deleting = ref(false)
+const deleteError = ref('')
+const deleteOpen = computed({
+  get: () => removing.value !== null,
+  set: (open) => { if (!open) removing.value = null },
+})
+
+function confirmRemoval(item) {
+  deleteError.value = ''
+  removing.value = item
+}
+
+async function removeResponse() {
+  if (!removing.value || deleting.value) return
+  deleting.value = true
+  deleteError.value = ''
+  try {
+    await deleteIndividualResponse(props.id, removing.value.id)
+    removing.value = null
+    await load()
+  } catch (e) {
+    deleteError.value = errorMessage(e, 'Не удалось удалить ответ.')
+  } finally {
+    deleting.value = false
+  }
+}
 
 let lastLoad = 0
 async function load() {
@@ -42,7 +69,10 @@ async function load() {
     const result = showResponses.value
       ? await getIndividualResponses(props.id, includeInProgress.value, responsePage.value)
       : await getResults(props.id, includeInProgress.value)
-    if (request === lastLoad) results.value = result
+    if (request === lastLoad) {
+      results.value = result
+      publishing.value.submitted_count = result.responses
+    }
   } catch (e) {
     if (request === lastLoad) error.value = errorMessage(e)
   }
@@ -104,12 +134,28 @@ const format = (value) => (value == null ? '-' : Number(value).toLocaleString('r
         </UiButton>
       </div>
 
+      <UiConfirm
+        v-model:open="deleteOpen"
+        title="Удалить ответ?"
+        confirm-label="Удалить"
+        variant="danger"
+        :loading="deleting"
+        @confirm="removeResponse"
+      >
+        <p v-if="removing">
+          {{ removing.respondent ? `Ответ пользователя ${removing.respondent}` : `Ответ № ${removing.number}` }}
+          будет удалён из результатов. Восстановить его нельзя.
+        </p>
+        <p v-if="deleteError" role="alert" class="mt-2 text-red-700">{{ deleteError }}</p>
+      </UiConfirm>
       <SkeletonPage v-if="!results && !error" class="mt-6" />
       <PublishingResponseList
         v-else-if="results && showResponses"
         :key="results.page"
         :responses="results"
+        :can-edit="publishing.can_edit"
         @page="setQuery({ page: $event === 1 ? undefined : $event })"
+        @remove="confirmRemoval"
       />
       <p v-else-if="results && !total" class="mt-10 text-center text-ink-muted">Ответов пока нет.</p>
 
