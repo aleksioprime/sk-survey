@@ -93,6 +93,7 @@ class Survey(IdMixin, TimestampMixin, Base):
     description: Mapped[str] = mapped_column(Text, default='', server_default='')
     intro_text: Mapped[str] = mapped_column(Text, default='', server_default='')
     thank_you_text: Mapped[str] = mapped_column(Text, default='', server_default='')
+    one_question_per_page: Mapped[bool] = mapped_column(Boolean, default=False, server_default='false')
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default='true')
     # Значение по умолчанию для новых публикаций
     is_anonymous: Mapped[bool] = mapped_column(Boolean, default=True, server_default='true')
@@ -128,6 +129,7 @@ class Section(IdMixin, TimestampMixin, Base):
     survey_id: Mapped[int] = mapped_column(ForeignKey('surveys.id', ondelete='CASCADE'), index=True)
     title: Mapped[str] = mapped_column(String(500), default='', server_default='')
     description: Mapped[str] = mapped_column(Text, default='', server_default='')
+    show_heading: Mapped[bool] = mapped_column(Boolean, default=True, server_default='true')
     order: Mapped[int] = mapped_column(Integer, default=0, server_default='0')
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default='true')
 

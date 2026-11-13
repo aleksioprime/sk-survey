@@ -134,14 +134,21 @@ function save() {
 </script>
 
 <template>
-  <form class="grid min-w-0 gap-4 rounded-card border border-line bg-surface p-4 sm:p-5" @submit.prevent="save">
-    <fieldset class="grid min-w-0 gap-4" :disabled="saving">
+  <div class="flex min-w-0 flex-wrap items-center justify-between gap-2">
+    <slot name="heading" />
+    <div class="flex min-w-0 flex-wrap items-center gap-2">
       <UiSwitch
         v-model="form.is_active"
         label="Показывать в опросе"
-        class="justify-self-start px-2"
+        class="px-2"
         :class="changed('is_active')"
+        :disabled="saving"
       />
+      <slot name="actions" />
+    </div>
+  </div>
+  <form class="grid min-w-0 gap-4 rounded-card border border-line bg-surface p-4 sm:p-5" @submit.prevent="save">
+    <fieldset class="grid min-w-0 gap-4" :disabled="saving">
       <div class="grid gap-1.5">
         <label class="text-sm font-medium" for="q-text">Текст вопроса</label>
         <textarea id="q-text" v-model="form.text" rows="2" required :class="[editorField, changed('text')]" class="min-h-18 p-3" />

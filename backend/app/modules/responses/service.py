@@ -99,6 +99,7 @@ async def survey_form(
         description=survey.description,
         intro_text=survey.intro_text,
         thank_you_text=survey.thank_you_text,
+        one_question_per_page=survey.one_question_per_page,
     )
     if requires_login:
         return result
@@ -106,9 +107,16 @@ async def survey_form(
     questions = await active_questions(db, survey.id)
     scale_ids = {q.scale_id for q in questions if q.scale_id}
     scales = list(await db.scalars(select(Scale).where(Scale.id.in_(scale_ids or {0}))))
+    sections = []
+    for section in survey.sections:
+        if section.is_active:
+            public_section = SectionOut.model_validate(section)
+            if not section.show_heading:
+                public_section = public_section.model_copy(update={'title': '', 'description': ''})
+            sections.append(public_section)
     return result.model_copy(
         update={
-            'sections': [SectionOut.model_validate(s) for s in survey.sections if s.is_active],
+            'sections': sections,
             'questions': [
                 PublicQuestion.model_validate(q).model_copy(
                     update={'options': [PublicOption.model_validate(o) for o in q.options if o.is_active]}

@@ -37,6 +37,51 @@ async def test_validation_of_question(db, client):
     assert no_scale.status_code == 422
 
 
+async def test_pagination_settings_in_preview_publication_and_copy(db, client):
+    await login_employee(db, client)
+    survey = (await client.post('/api/v1/surveys', json={'title': 'Опрос'})).json()
+    url = f'/api/v1/surveys/{survey["id"]}'
+    assert survey['one_question_per_page'] is False
+    section = (await client.post(f'{url}/sections', json={'title': 'Группа', 'description': 'Пояснение'})).json()
+    assert section['show_heading'] is True
+
+    question = await client.post(
+        f'{url}/questions', json={'text': 'Вопрос', 'question_type': 'text', 'section_id': section['id']}
+    )
+    assert question.status_code == 201, question.text
+    publication = (await client.post(f'{url}/publishings', json={'title': 'Публикация'})).json()
+    public_url = f'/api/v1/public/s/{publication["public_token"]}'
+    public = (await client.get(public_url)).json()
+    assert public['one_question_per_page'] is False
+    assert public['sections'][0]['title'] == 'Группа'
+
+    updated = await client.patch(url, json={'one_question_per_page': True})
+    assert updated.status_code == 200, updated.text
+    assert updated.json()['one_question_per_page'] is True
+    section_url = f'/api/v1/sections/{section["id"]}'
+    updated_section = await client.patch(section_url, json={'show_heading': False})
+    assert updated_section.status_code == 200, updated_section.text
+    assert updated_section.json()['title'] == 'Группа'
+    assert updated_section.json()['description'] == 'Пояснение'
+
+    for form_url in (f'{url}/preview', public_url):
+        response = await client.get(form_url)
+        assert response.status_code == 200, response.text
+        form = response.json()
+        assert form['one_question_per_page'] is True
+        assert form['sections'][0]['title'] == form['sections'][0]['description'] == ''
+        assert form['questions'][0]['section_id'] == section['id']
+
+    copied = await client.post(f'{url}/copy')
+    assert copied.status_code == 201, copied.text
+    assert copied.json()['one_question_per_page'] is True
+    assert copied.json()['sections'][0]['show_heading'] is False
+    assert copied.json()['sections'][0]['title'] == 'Группа'
+
+    assert (await client.patch(section_url, json={'show_heading': True})).status_code == 200
+    assert (await client.get(public_url)).json()['sections'][0]['description'] == 'Пояснение'
+
+
 async def test_other_people_do_not_see_survey(db, client):
     await login_employee(db, client)
     built = await build_survey(client)

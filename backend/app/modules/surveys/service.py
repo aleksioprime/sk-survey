@@ -217,6 +217,7 @@ async def copy_survey(db: AsyncSession, source: Survey, user: User) -> Survey:
         description=source.description,
         intro_text=source.intro_text,
         thank_you_text=source.thank_you_text,
+        one_question_per_page=source.one_question_per_page,
         is_active=source.is_active,
         is_anonymous=source.is_anonymous,
         created_by_id=user.id,
@@ -230,6 +231,7 @@ async def copy_survey(db: AsyncSession, source: Survey, user: User) -> Survey:
             survey_id=survey.id,
             title=section.title,
             description=section.description,
+            show_heading=section.show_heading,
             order=section.order,
             is_active=section.is_active,
         )
@@ -370,7 +372,7 @@ async def get_section(db: AsyncSession, section_id: int) -> Section:
 
 
 async def update_section(db: AsyncSession, section: Section, data: SectionIn) -> None:
-    for field, value in data.model_dump().items():
+    for field, value in data.model_dump(exclude_unset=True).items():
         setattr(section, field, value)
     await db.flush()
 

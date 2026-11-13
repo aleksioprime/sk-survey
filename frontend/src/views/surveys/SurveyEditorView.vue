@@ -31,6 +31,7 @@ const editorVersion = ref(0)
 const questionDirty = ref(false)
 const discardAction = ref(null)
 const questionError = ref('')
+const questionSaved = ref(false)
 const saving = ref(false)
 const sectionDraft = ref(null)
 
@@ -82,9 +83,11 @@ const currentGroup = computed(() => groups.value.find((group) => (
 )))
 const currentSection = computed(() => currentGroup.value?.section)
 const position = computed(() => orderedQuestions.value.indexOf(currentQuestion.value) + 1)
+const sectionHeadingChanged = computed(() => sectionDraft.value?.show_heading !== (currentSection.value?.show_heading ?? true))
 const sectionDirty = computed(() => sectionDraft.value && (
   sectionDraft.value.title !== (currentSection.value?.title || '')
   || sectionDraft.value.description !== (currentSection.value?.description || '')
+  || sectionHeadingChanged.value
 ))
 
 const hasDraft = computed(() => questionDirty.value || sectionDirty.value || settingsDirty.value)
@@ -125,6 +128,7 @@ async function focusEditor() {
 function resetDraft() {
   questionDirty.value = false
   questionError.value = ''
+  questionSaved.value = false
   sectionDraft.value = null
   editorVersion.value += 1
 }
@@ -140,7 +144,11 @@ function openSection(section, focus = true) {
   resetDraft()
   selected.value = 'section'
   sectionId.value = section?.id ?? null
-  sectionDraft.value = { title: section?.title || '', description: section?.description || '' }
+  sectionDraft.value = {
+    title: section?.title || '',
+    description: section?.description || '',
+    show_heading: section?.show_heading ?? true,
+  }
   if (focus) focusEditor()
 }
 
@@ -240,6 +248,7 @@ function settingsFromSurvey(data) {
     description: data.description,
     intro_text: data.intro_text,
     thank_you_text: data.thank_you_text,
+    one_question_per_page: data.one_question_per_page ?? false,
     is_anonymous: data.is_anonymous,
   }
 }
@@ -282,6 +291,7 @@ const reload = async () => setSurvey(await api.getSurvey(props.id))
 async function saveQuestion(payload, question) {
   saving.value = true
   questionError.value = ''
+  questionSaved.value = false
   notice.value = ''
   try {
     const saved = question ? await api.updateQuestion(question.id, payload) : await api.addQuestion(props.id, payload)
@@ -289,11 +299,23 @@ async function saveQuestion(payload, question) {
       ? survey.value.questions.map((item) => item.id === saved.id ? saved : item)
       : [...survey.value.questions, saved]
     selectSavedQuestion(saved.id, false)
-    notice.value = 'Вопрос сохранён'
+    questionSaved.value = true
   } catch (e) {
     questionError.value = errorMessage(e)
   } finally {
     saving.value = false
+  }
+}
+
+function requestQuestionCopy(question) {
+  if (saving.value) return
+  discardAction.value = {
+    title: 'Скопировать вопрос?',
+    text: questionDirty.value
+      ? 'Будет скопирована сохранённая версия вопроса. Несохранённые изменения будут потеряны при переходе к копии.'
+      : 'Копия будет добавлена в конец текущего раздела.',
+    confirmLabel: 'Скопировать',
+    confirm: () => duplicateQuestion(question),
   }
 }
 
@@ -385,7 +407,12 @@ async function saveSection() {
   saving.value = true
   try {
     await run(async () => {
-      const body = { title: draft.title.trim(), description: draft.description.trim(), is_active: currentSection.value?.is_active ?? true }
+      const body = {
+        title: draft.title.trim(),
+        description: draft.description.trim(),
+        show_heading: draft.show_heading,
+        is_active: currentSection.value?.is_active ?? true,
+      }
       const section = currentSection.value
         ? await api.updateSection(currentSection.value.id, body)
         : await api.addSection(props.id, body)
@@ -624,10 +651,13 @@ const textarea = 'rounded-control border border-line bg-surface p-3 outline-none
                   :disabled="saving"
                   @click="chooseQuestion(question.id)"
                 >
-                  <QuestionTypeIcon :type="question.question_type" class="mt-0.5 text-brand-700" />
+                  <span class="mt-0.5 grid w-5 shrink-0 justify-items-center">
+                    <QuestionTypeIcon :type="question.question_type" class="text-brand-700" />
+                    <span v-if="question.is_required" class="text-sm leading-none font-semibold text-red-600" role="img" aria-label="Обязательный вопрос" title="Обязательный вопрос">*</span>
+                  </span>
                   <span v-if="selected === question.id && questionDirty" class="mt-1.5 size-2 shrink-0 rounded-full bg-brand-600" role="img" aria-label="Есть несохранённые изменения" />
                   <span class="min-w-0">
-                    <span class="line-clamp-2 break-words text-sm font-medium">{{ question.text }}<span v-if="question.is_required" class="text-red-600" aria-label="Обязательный"> *</span></span>
+                    <span class="line-clamp-2 break-words text-sm font-medium">{{ question.text }}</span>
                     <span class="mt-0.5 block text-xs text-ink-muted">
                       {{ QUESTION_TYPES[question.question_type] }}<template v-if="!question.is_active"> · Скрыт</template>
                     </span>
@@ -666,15 +696,6 @@ const textarea = 'rounded-control border border-line bg-surface p-3 outline-none
 
       <div class="grid min-w-0 gap-3">
         <template v-if="currentQuestion || selected === 'new'">
-          <div class="flex flex-wrap items-center justify-between gap-2">
-            <div class="min-w-0">
-              <p v-if="currentSection" class="break-words text-xs text-ink-muted">{{ currentSection.title || 'Раздел без названия' }}</p>
-              <h2 ref="editorHeading" tabindex="-1" class="scroll-mt-20 text-lg font-semibold outline-none">
-                {{ currentQuestion ? `Вопрос ${position} из ${orderedQuestions.length}` : 'Новый вопрос' }}
-              </h2>
-            </div>
-            <UiButton v-if="currentQuestion" size="sm" :disabled="saving" @click="changePanel(() => duplicateQuestion(currentQuestion))">Скопировать вопрос</UiButton>
-          </div>
           <QuestionEditor
             :key="editorVersion"
             :question="currentQuestion || null"
@@ -689,7 +710,24 @@ const textarea = 'rounded-control border border-line bg-surface p-3 outline-none
             @cancel="cancelQuestion"
             @delete="removeQuestion(currentQuestion)"
             @scale-created="onScaleCreated"
-          />
+          >
+            <template #heading>
+              <div class="min-w-0">
+                <p v-if="currentSection" class="break-words text-xs text-ink-muted">{{ currentSection.title || 'Раздел без названия' }}</p>
+                <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <h2 ref="editorHeading" tabindex="-1" class="scroll-mt-20 text-lg font-semibold outline-none">
+                    {{ currentQuestion ? `Вопрос ${position} из ${orderedQuestions.length}` : 'Новый вопрос' }}
+                  </h2>
+                  <span v-if="questionSaved" role="status" class="rounded-control bg-brand-50 px-2 py-1 text-xs font-medium text-brand-700">
+                    Вопрос сохранён
+                  </span>
+                </div>
+              </div>
+            </template>
+            <template #actions>
+              <UiButton v-if="currentQuestion" size="sm" :disabled="saving" @click="requestQuestionCopy(currentQuestion)">Скопировать вопрос</UiButton>
+            </template>
+          </QuestionEditor>
         </template>
 
         <template v-else-if="selected === 'section'">
@@ -707,6 +745,14 @@ const textarea = 'rounded-control border border-line bg-surface p-3 outline-none
               Пояснение
               <textarea v-model="sectionDraft.description" rows="3" :class="[textarea, { 'ui-changed': sectionDraft.description !== (currentSection?.description || '') }]" :disabled="saving" />
             </label>
+            <UiSwitch
+              v-model="sectionDraft.show_heading"
+              label="Показывать название и пояснение раздела"
+              hint="Если выключить, участники увидят только вопросы. Название останется в конструкторе."
+              class="px-2"
+              :class="{ 'ui-changed': sectionHeadingChanged }"
+              :disabled="saving"
+            />
             <UiFormActions
               v-if="sectionDirty || !currentSection"
               :message="sectionDirty ? 'Есть несохранённые изменения' : ''"
@@ -739,6 +785,13 @@ const textarea = 'rounded-control border border-line bg-surface p-3 outline-none
             <textarea v-model="settings.thank_you_text" rows="3" :class="[textarea, { 'ui-changed': settingChanged('thank_you_text') }]" />
           </label>
           <UiSwitch v-model="settings.is_anonymous" label="Новые публикации анонимны" class="justify-self-start px-2" :class="{ 'ui-changed': settingChanged('is_anonymous') }" />
+          <UiSwitch
+            v-model="settings.one_question_per_page"
+            label="Каждый вопрос на отдельной странице"
+            hint="Если выключить, вопросы каждого раздела будут показаны на одной странице."
+            class="px-2"
+            :class="{ 'ui-changed': settingChanged('one_question_per_page') }"
+          />
         </fieldset>
         <p v-if="settingsError" role="alert" class="rounded-control bg-red-100 px-3 py-2 text-sm text-red-800">{{ settingsError }}</p>
         <UiFormActions v-if="settingsDirty" :loading="settingsSaving" :disabled="activeSaving || copying || accessSaving" @cancel="cancelSettings" />

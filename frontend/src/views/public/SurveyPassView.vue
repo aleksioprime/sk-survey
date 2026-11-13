@@ -64,18 +64,25 @@ const emptyAnswer = () => ({
 
 const scales = computed(() => Object.fromEntries((survey.value?.scales || []).map((s) => [s.id, s])))
 
-/** Страницы: вопросы без раздела - первой страницей, дальше разделы по порядку. */
+/** Сначала вопросы без раздела, затем вопросы разделов в заданном порядке. */
 const pages = computed(() => {
   if (!survey.value) return []
-  const questions = survey.value.questions
-  const result = []
-  const loose = questions.filter((q) => !q.section_id || !survey.value.sections.some((s) => s.id === q.section_id))
-  if (loose.length) result.push({ id: 'loose', title: '', description: '', questions: loose })
-  for (const section of survey.value.sections) {
-    const items = questions.filter((q) => q.section_id === section.id)
-    if (items.length) result.push({ ...section, questions: items })
-  }
-  return result
+  const { questions, sections, one_question_per_page: oneQuestionPerPage } = survey.value
+  const known = new Set(sections.map((section) => section.id))
+  const groups = [
+    { title: '', description: '', questions: questions.filter((q) => !known.has(q.section_id)) },
+    ...sections.map((section) => ({
+      title: section.title,
+      description: section.description,
+      questions: questions.filter((q) => q.section_id === section.id),
+    })),
+  ].filter((group) => group.questions.length)
+  if (!oneQuestionPerPage) return groups
+  return groups.flatMap(({ title, description, questions: items }) => items.map((question, index) => ({
+    title: index === 0 ? title : '',
+    description: index === 0 ? description : '',
+    questions: [question],
+  })))
 })
 const current = computed(() => pages.value[page.value])
 const isLast = computed(() => page.value === pages.value.length - 1)
@@ -376,7 +383,7 @@ async function submit() {
         <section v-else-if="stage === 'questions'">
           <div class="mb-6">
             <div class="flex justify-between text-sm text-ink-muted">
-              <span v-if="pages.length > 1">Часть {{ page + 1 }} из {{ pages.length }}</span>
+              <span v-if="pages.length > 1">{{ survey.one_question_per_page ? 'Вопрос' : 'Часть' }} {{ page + 1 }} из {{ pages.length }}</span>
               <span>Отвечено {{ progress }}%</span>
             </div>
             <div class="mt-2 h-2 overflow-hidden rounded-full bg-line" role="progressbar" :aria-valuenow="progress" aria-valuemin="0" aria-valuemax="100">
@@ -385,7 +392,7 @@ async function submit() {
           </div>
 
           <div v-if="current.title || current.description" class="mb-4">
-            <h2 class="text-xl font-semibold">{{ current.title }}</h2>
+            <h2 v-if="current.title" class="text-xl font-semibold">{{ current.title }}</h2>
             <p v-if="current.description" class="mt-1 whitespace-pre-line text-ink-muted">{{ current.description }}</p>
           </div>
 

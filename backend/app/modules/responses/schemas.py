@@ -45,6 +45,7 @@ class PublicSurvey(BaseModel):
     description: str
     intro_text: str
     thank_you_text: str
+    one_question_per_page: bool
     sections: list[SectionOut] = []
     questions: list[PublicQuestion] = []
     scales: list[ScaleOut] = []

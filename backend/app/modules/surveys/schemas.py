@@ -194,6 +194,7 @@ class QuestionOut(ORMModel):
 class SectionIn(BaseModel):
     title: str = Field(default='', max_length=500)
     description: str = ''
+    show_heading: bool = True
     is_active: bool = True
 
 
@@ -201,6 +202,7 @@ class SectionOut(ORMModel):
     id: int
     title: str
     description: str
+    show_heading: bool
     order: int
     is_active: bool
 
@@ -211,6 +213,7 @@ class SurveyIn(BaseModel):
     description: str = ''
     intro_text: str = ''
     thank_you_text: str = ''
+    one_question_per_page: bool = False
     is_active: bool = True
     is_anonymous: bool = True
 
@@ -221,6 +224,7 @@ class SurveyPatch(BaseModel):
     description: str | None = None
     intro_text: str | None = None
     thank_you_text: str | None = None
+    one_question_per_page: bool = False
     is_active: bool | None = None
     is_anonymous: bool | None = None
 
@@ -254,6 +258,7 @@ class SurveyOut(ORMModel):
     description: str
     intro_text: str
     thank_you_text: str
+    one_question_per_page: bool
     is_active: bool
     is_anonymous: bool
     created_at: datetime
