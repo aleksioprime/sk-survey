@@ -82,9 +82,9 @@ async def test_matrix_roundtrip(db, client, kind):
 
     book = load_workbook(BytesIO((await client.get(f'{pub_url}/export.xlsx')).content))
     rows = list(book['Ответы'].values)
-    assert rows[0] == ('№', 'Что изменилось? / Расписание', 'Что изменилось? / Встречи')
-    assert rows[-1][1:] == ('Не могу сравнить', 'Не могу сравнить')
-    assert ('', 'Лучше', 1, 50, 2, 'Сравнимые ответы') in [(row[0] or '', *row[1:]) for row in book['Сводка'].values]
+    assert rows[0][:3] == ('№', 'Что изменилось? / Расписание', 'Что изменилось? / Встречи')
+    assert rows[-1][1:3] == ('Не могу сравнить', 'Не могу сравнить')
+    assert ('', 'Лучше', 1, 50, 2, 'Сравнимые ответы') in [(row[0] or '', *row[1:6]) for row in book['Сводка'].values]
     changed = {**question, 'matrix_rows': body['matrix_rows'][:1]}
     assert (await client.put(f'/api/v1/questions/{question["id"]}', json=changed)).status_code == 409
 

@@ -118,7 +118,7 @@ const format = (value) => (value == null ? '-' : Number(value).toLocaleString('r
           <p class="flex items-center gap-2 text-xs text-ink-muted">
             <QuestionTypeIcon :type="q.question_type" class="size-4 text-brand-700" />
             <span>
-              {{ index + 1 }} · {{ QUESTION_TYPES[q.question_type] }} · ответили {{ q.answered }}<template v-if="q.skipped">, пропустили {{ q.skipped }}</template>
+              {{ index + 1 }} · {{ QUESTION_TYPES[q.question_type] }} · {{ q.is_required ? 'обязательный' : 'необязательный' }} · ответили {{ q.answered }}<template v-if="q.skipped">, пропустили {{ q.skipped }}</template>
               <template v-if="!q.is_active"> · вопрос скрыт</template>
             </span>
           </p>

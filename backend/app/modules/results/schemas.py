@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel
 
 
@@ -51,6 +53,7 @@ class QuestionResult(BaseModel):
     text: str
     question_type: str
     is_active: bool
+    is_required: bool
     answered: int
     skipped: int
     options: list[OptionStat] = []
@@ -86,6 +89,8 @@ class IndividualAnswer(BaseModel):
 class IndividualResponse(BaseModel):
     number: int
     submitted: bool
+    started_at: datetime
+    submitted_at: datetime | None
     respondent: str | None = None
     study_class: str | None = None
     answers: list[IndividualAnswer]

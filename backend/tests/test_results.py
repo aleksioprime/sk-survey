@@ -1,5 +1,6 @@
 """Сводка и выгрузка результатов, доступ к ним."""
 
+from datetime import datetime
 from io import BytesIO
 
 import pytest
@@ -41,6 +42,7 @@ async def test_summary(db, client):
     by_type = {q['question_type']: q for q in results['questions']}
 
     single = by_type['single_choice']
+    assert single['is_required'] == built['questions']['single_choice']['is_required']
     assert [(o['count'], o['percent']) for o in single['options']] == [(1, 50.0), (1, 50.0), (0, 0.0)]
     scale = by_type['scale']
     assert scale['mean'] == 5 and scale['min'] == 2 and scale['max'] == 8
@@ -70,7 +72,11 @@ async def test_export_xlsx(db, client):
     rows = list(book['Ответы'].values)
     assert rows[0][:2] == ('№', 'Вопрос text')
     assert rows[1][1] == 'Всё хорошо' and rows[1][5] == '42' and rows[1][6] == 'Да'
-    assert 'Сводка' in book.sheetnames
+    assert rows[0][-2:] == ('Начало попытки (МСК)', 'Отправлен (МСК)')
+    assert isinstance(rows[1][-2], datetime) and rows[1][-2] <= rows[1][-1]
+    summary = list(book['Сводка'].values)
+    assert summary[0][-1] == 'Обязательность'
+    assert summary[1][-1] in ('Обязательный', 'Необязательный')
 
 
 async def test_individual_responses(db, client, monkeypatch):
@@ -85,8 +91,9 @@ async def test_individual_responses(db, client, monkeypatch):
     page = (await client.get(url)).json()
     assert (page['page'], page['responses'], page['in_progress']) == (1, 1, 0)
     answer = page['items'][0]
-    assert set(answer) == {'number', 'submitted', 'respondent', 'study_class', 'answers'}
+    assert set(answer) == {'number', 'submitted', 'started_at', 'submitted_at', 'respondent', 'study_class', 'answers'}
     assert answer['submitted']
+    assert datetime.fromisoformat(answer['started_at']) <= datetime.fromisoformat(answer['submitted_at'])
     assert answer['respondent'] is None and answer['study_class'] is None
     assert {item['question']: item['text'] for item in answer['answers']}['Вопрос text'] == 'Всё хорошо'
 
@@ -94,6 +101,7 @@ async def test_individual_responses(db, client, monkeypatch):
     assert (with_draft['page'], with_draft['responses'], with_draft['in_progress']) == (2, 1, 1)
     draft = with_draft['items'][0]
     assert draft['number'] == 2 and not draft['submitted']
+    assert draft['started_at'] and draft['submitted_at'] is None
     assert {item['question']: item['text'] for item in draft['answers']}['Вопрос text'] == 'Черновик'
 
 

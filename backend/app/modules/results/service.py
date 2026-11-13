@@ -3,7 +3,9 @@
 import statistics
 from collections import Counter
 from dataclasses import dataclass
+from datetime import datetime
 from io import BytesIO
+from zoneinfo import ZoneInfo
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font
@@ -33,6 +35,7 @@ CHOICE = ('single_choice', 'multiple_choice')
 NUMERIC = ('number', 'scale')
 TEXTS = ('text', 'rich_text', TEXT_LIST)
 RESPONSES_PER_PAGE = 20
+MOSCOW = ZoneInfo('Europe/Moscow')
 
 
 @dataclass
@@ -96,6 +99,7 @@ def summarize(data: Dataset) -> PublishingResults:
             text=question.text,
             question_type=question.question_type,
             is_active=question.is_active,
+            is_required=question.is_required,
             answered=0,
             skipped=skipped,
         )
@@ -312,6 +316,8 @@ async def individual_responses(
             IndividualResponse(
                 number=number,
                 submitted=response.status == STATUS_SUBMITTED,
+                started_at=response.created_at,
+                submitted_at=response.submitted_at,
                 respondent=(person.full_name if person else '') or (user.email if user else None),
                 study_class=person.study_class.name if person and person.study_class else None,
                 answers=[answer for answer in answers if answer.text],
@@ -322,6 +328,10 @@ async def individual_responses(
     )
 
 
+def _excel_time(value: datetime | None) -> datetime | None:
+    return value.astimezone(MOSCOW).replace(tzinfo=None) if value else None
+
+
 def export_xlsx(data: Dataset) -> bytes:
     book = Workbook()
     sheet = book.active
@@ -330,7 +340,7 @@ def export_xlsx(data: Dataset) -> bytes:
     text_list_columns = []
     header = ['№']
     if personal:
-        header += ['Отправлен', 'ФИО', 'Email', 'Класс']
+        header += ['Отправлен (МСК)', 'ФИО', 'Email', 'Класс']
     for question in data.questions:
         if question.question_type in MATRIX_TYPES:
             header.extend(f"{question.text} / {row['title']}" for row in question.matrix_rows)
@@ -338,6 +348,9 @@ def export_xlsx(data: Dataset) -> bytes:
             header.append(question.text)
             if question.question_type == TEXT_LIST:
                 text_list_columns.append(len(header))
+    header.append('Начало попытки (МСК)')
+    if not personal:
+        header.append('Отправлен (МСК)')
     sheet.append(header)
     for number, response in enumerate(data.responses, 1):
         by_question = {a.question_id: a for a in response.answers}
@@ -346,7 +359,7 @@ def export_xlsx(data: Dataset) -> bytes:
             user = data.users.get(response.user_id)
             person = user.person if user else None
             row += [
-                response.submitted_at.astimezone().replace(tzinfo=None) if response.submitted_at else None,
+                _excel_time(response.submitted_at),
                 person.full_name if person else '',
                 user.email if user else '',
                 person.study_class.name if person and person.study_class else '',
@@ -357,6 +370,9 @@ def export_xlsx(data: Dataset) -> bytes:
                 row.extend(_matrix_values(question, answer))
             else:
                 row.append(answer_text(question, answer, data.scales.get(question.scale_id)))
+        row.append(_excel_time(response.created_at))
+        if not personal:
+            row.append(_excel_time(response.submitted_at))
         sheet.append(row)
         for column in text_list_columns:
             sheet.cell(row=sheet.max_row, column=column).alignment = Alignment(wrap_text=True, vertical='top')
@@ -370,10 +386,13 @@ def export_xlsx(data: Dataset) -> bytes:
     sheet.freeze_panes = 'C2' if personal else 'B2'
 
     summary = book.create_sheet('Сводка')
-    summary.append(['Вопрос / строка матрицы', 'Ответ', 'Количество', '%', 'База', 'От чего рассчитан %'])
+    summary.append(
+        ['Вопрос / строка матрицы', 'Ответ', 'Количество', '%', 'База', 'От чего рассчитан %', 'Обязательность']
+    )
     for result in summarize(data).questions:
         summary.append([result.text])
         summary.cell(summary.max_row, 1).font = Font(bold=True)
+        summary.cell(summary.max_row, 7, 'Обязательный' if result.is_required else 'Необязательный')
         if result.comparison:
             _export_choices(summary, result.comparison, result.answered)
         else:
@@ -392,6 +411,7 @@ def export_xlsx(data: Dataset) -> bytes:
     summary.column_dimensions['B'].width = 40
 
     summary.column_dimensions['F'].width = 32
+    summary.column_dimensions['G'].width = 20
     for worksheet in book:
         for cells in worksheet.iter_rows():
             for cell in cells:
