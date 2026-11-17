@@ -33,7 +33,7 @@ from app.modules.surveys.models import MATRIX_TYPES, SCALE_GENERATED, TEXT_LIST,
 
 CHOICE = ('single_choice', 'multiple_choice')
 NUMERIC = ('number', 'scale')
-TEXTS = ('text', 'rich_text', TEXT_LIST)
+TEXTS = ('text', 'short_text', 'rich_text', TEXT_LIST, 'date')
 RESPONSES_PER_PAGE = 20
 MOSCOW = ZoneInfo('Europe/Moscow')
 
@@ -148,7 +148,9 @@ def summarize(data: Dataset) -> PublishingResults:
             values = [
                 (
                     a.response_id,
-                    answer_text(question, a, None) if kind == TEXT_LIST else a.text_value or a.rich_text_value,
+                    answer_text(question, a, None)
+                    if kind in (TEXT_LIST, 'date')
+                    else a.text_value or a.rich_text_value,
                 )
                 for a in given
             ]
@@ -238,14 +240,16 @@ def answer_text(question: Question, answer: Answer | None, scale: Scale | None) 
         return ''
     if answer.is_skipped:
         return 'Пропущен'
-    titles = {o.id: o.title for o in question.options}
     kind = question.question_type
-    if kind == 'text':
+    if kind in ('text', 'short_text'):
         return answer.text_value or ''
+    if kind == 'date':
+        return answer.date_value.isoformat() if answer.date_value else ''
     if kind == TEXT_LIST:
         return '\n'.join(answer.text_rows)
     if kind == 'rich_text':
         return answer.rich_text_value or ''
+    titles = {o.id: o.title for o in question.options}
     if kind == 'single_choice':
         return titles.get(answer.option_id, '')
     if kind == 'multiple_choice':
@@ -343,7 +347,7 @@ def _excel_time(value: datetime | None) -> datetime | None:
 
 
 def export_xlsx(data: Dataset) -> bytes:
-    book = Workbook()
+    book = Workbook(iso_dates=True)
     sheet = book.active
     sheet.title = 'Ответы'
     personal = not data.publishing.is_anonymous
@@ -378,6 +382,8 @@ def export_xlsx(data: Dataset) -> bytes:
             answer = by_question.get(question.id)
             if question.question_type in MATRIX_TYPES:
                 row.extend(_matrix_values(question, answer))
+            elif question.question_type == 'date' and answer and not answer.is_skipped and answer.date_value:
+                row.append(answer.date_value)
             else:
                 row.append(answer_text(question, answer, data.scales.get(question.scale_id)))
         row.append(_excel_time(response.created_at))

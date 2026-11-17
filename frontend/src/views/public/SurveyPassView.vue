@@ -53,6 +53,7 @@ const emptyAnswer = () => ({
   text_value: null,
   rich_text_value: null,
   number_value: null,
+  date_value: null,
   boolean_value: null,
   scale_item_id: null,
   option_id: null,
@@ -106,6 +107,7 @@ function hasProgress(answer) {
       answer.text_value?.trim() ||
       answer.rich_text_value ||
       answer.number_value != null ||
+      answer.date_value ||
       answer.boolean_value != null ||
       answer.scale_item_id ||
       answer.option_id ||

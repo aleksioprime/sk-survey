@@ -1,12 +1,13 @@
 """Прохождения опросов и ответы на вопросы."""
 
-from datetime import datetime
+from datetime import date, datetime
 
 from sk_common.db import Base, IdMixin, TimestampMixin
 from sqlalchemy import (
     BigInteger,
     Boolean,
     Column,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -58,6 +59,7 @@ class Answer(IdMixin, TimestampMixin, Base):
     text_value: Mapped[str | None] = mapped_column(Text)
     rich_text_value: Mapped[str | None] = mapped_column(Text)
     number_value: Mapped[float | None] = mapped_column(Float)
+    date_value: Mapped[date | None] = mapped_column(Date)
     boolean_value: Mapped[bool | None] = mapped_column(Boolean)
     scale_item_id: Mapped[int | None] = mapped_column(ForeignKey('scale_items.id', ondelete='SET NULL'))
     option_id: Mapped[int | None] = mapped_column(ForeignKey('survey_question_options.id', ondelete='SET NULL'))

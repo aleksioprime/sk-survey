@@ -23,10 +23,12 @@ export const QUESTION_TYPES = {
   matrix_single: 'Матрица: один вариант в строке',
   matrix_multiple: 'Матрица: несколько вариантов в строке',
   scale: 'Шкала',
+  short_text: 'Однострочный текст',
   text: 'Текст',
   [TEXT_LIST]: 'Список текстовых ответов',
   rich_text: 'Развёрнутый текст',
   number: 'Число',
+  date: 'Дата',
   yes_no: 'Да / Нет',
   ranking: 'Расставить по порядку',
 }

@@ -28,6 +28,7 @@ TEXT_LIST_ROW_LENGTH = 500
 
 QUESTION_TYPES = (
     'text',  # Текст
+    'short_text',  # Однострочный текст
     TEXT_LIST,  # Список текстовых ответов
     'rich_text',  # Форматированный текст
     'matrix_multiple',  # Несколько вариантов в каждой строке
@@ -35,6 +36,7 @@ QUESTION_TYPES = (
     'single_choice',  # Одиночный выбор
     'multiple_choice',  # Множественный выбор
     'number',  # Число
+    'date',  # Дата
     'yes_no',  # Да/Нет
     'scale',  # Шкала
     'ranking',  # Расставить по порядку

@@ -213,7 +213,15 @@ async def save_answer(db: AsyncSession, response: Response, question_id: int, da
 
 
 async def _apply(db: AsyncSession, question: Question, answer: Answer, data: AnswerIn) -> None:
-    for field in ('text_value', 'rich_text_value', 'number_value', 'boolean_value', 'scale_item_id', 'option_id'):
+    for field in (
+        'text_value',
+        'rich_text_value',
+        'number_value',
+        'date_value',
+        'boolean_value',
+        'scale_item_id',
+        'option_id',
+    ):
         setattr(answer, field, None)
     answer.selected_options = []
     answer.ranking = []
@@ -225,8 +233,11 @@ async def _apply(db: AsyncSession, question: Question, answer: Answer, data: Ans
 
     options = {o.id: o for o in question.options if o.is_active}
     kind = question.question_type
-    if kind == 'text':
-        answer.text_value = (data.text_value or '').strip() or None
+    if kind in ('text', 'short_text'):
+        value = (data.text_value or '').strip()
+        if kind == 'short_text' and len(value.splitlines()) > 1:
+            raise AnswerError('Введите ответ в одну строку')
+        answer.text_value = value or None
     elif kind == TEXT_LIST:
         rows = [row for value in data.text_rows if (row := value.strip())]
         maximum = question.max_rows or TEXT_LIST_MAX_ROWS
@@ -240,6 +251,8 @@ async def _apply(db: AsyncSession, question: Question, answer: Answer, data: Ans
         if data.number_value is not None:
             _check_range(data.number_value, question.min_number, question.max_number)
         answer.number_value = data.number_value
+    elif kind == 'date':
+        answer.date_value = data.date_value
     elif kind == 'yes_no':
         answer.boolean_value = data.boolean_value
     elif kind == 'single_choice':
@@ -313,6 +326,7 @@ def is_answered(answer: Answer | None) -> bool:
         answer.text_value
         or answer.rich_text_value
         or answer.number_value is not None
+        or answer.date_value is not None
         or answer.boolean_value is not None
         or answer.scale_item_id
         or answer.option_id

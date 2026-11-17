@@ -9,8 +9,10 @@ const shapes = {
   scale: 'M3 8h18v8H3zM7 8v3m5-3v5m5-5v3',
   text_list: 'M3 5h.01M3 11h.01M3 17h.01M7 5h14m-14 6h14M7 17h14',
   text: 'M4 6h16M4 11h16M4 16h10',
+  short_text: 'M4 12h16',
   rich_text: 'M5 3h11l3 3v15H5zm10 0v5h4M8 11h8m-8 3h8m-8 3h5',
   number: 'M10 4 6 20M18 4l-4 16M4 9h17M3 15h17',
+  date: 'M3 5h18v16H3zM7 3v4m10-4v4M3 10h18m-12 5h.01m6 0h.01',
   yes_no: 'm2 12 3 3 5-6m5 0 6 6m0-6-6 6',
   ranking: 'M10 5h11M10 12h8m-8 7h5M5 4v16m-3-3 3 3 3-3',
 }

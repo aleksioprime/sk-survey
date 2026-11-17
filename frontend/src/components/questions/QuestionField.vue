@@ -1,10 +1,10 @@
 <script setup>
 /**
  * Поле ответа на вопрос любого типа. v-model - ответ в форме API:
- * { text_value, rich_text_value, number_value, boolean_value, scale_item_id, option_id, option_ids, ranking, is_skipped }.
+ * { text_value, rich_text_value, number_value, date_value, boolean_value, scale_item_id, option_id, option_ids, ranking, is_skipped }.
  */
 import { UiInput } from 'sk-ui'
-import { computed, useId } from 'vue'
+import { computed, ref, useId, watch } from 'vue'
 import TextListField from './TextListField.vue'
 import MatrixField from './MatrixField.vue'
 import { MATRIX_TYPES, TEXT_LIST } from '@/utils/questionTypes'
@@ -20,9 +20,19 @@ const props = defineProps({
 })
 const model = defineModel({ type: Object, required: true })
 const id = useId()
+const richTextDraft = ref(htmlToText(model.value.rich_text_value))
+
+watch(() => model.value.rich_text_value, (html) => {
+  if (html !== textToHtml(richTextDraft.value)) richTextDraft.value = htmlToText(html)
+})
 
 function update(changes) {
   model.value = { ...model.value, ...changes, is_skipped: false }
+}
+
+function updateRichText(text) {
+  richTextDraft.value = text
+  update({ rich_text_value: textToHtml(text) })
 }
 
 const scaleSteps = computed(() => {
@@ -99,8 +109,18 @@ const choiceClass = (active) =>
   <fieldset :aria-describedby="error ? `${id}-error` : undefined" :disabled="disabled" class="grid gap-3">
     <legend class="sr-only">{{ question.text }}</legend>
 
+    <UiInput
+      v-if="question.question_type === 'short_text'"
+      type="text"
+      :model-value="model.text_value || ''"
+      maxlength="20000"
+      placeholder="Ваш ответ"
+      :aria-label="question.text"
+      @update:model-value="update({ text_value: $event })"
+    />
+
     <textarea
-      v-if="question.question_type === 'text'"
+      v-else-if="question.question_type === 'text'"
       :value="model.text_value || ''"
       rows="4"
       class="w-full rounded-control border border-line bg-surface p-3 outline-none focus:border-brand-500"
@@ -118,12 +138,12 @@ const choiceClass = (active) =>
 
     <textarea
       v-else-if="question.question_type === 'rich_text'"
-      :value="htmlToText(model.rich_text_value)"
+      :value="richTextDraft"
       rows="6"
       class="w-full rounded-control border border-line bg-surface p-3 outline-none focus:border-brand-500"
-      placeholder="Ваш ответ. Пустая строка - новый абзац."
+      placeholder="Ваш ответ"
       :aria-label="question.text"
-      @input="update({ rich_text_value: textToHtml($event.target.value) })"
+      @input="updateRichText($event.target.value)"
     />
 
     <UiInput
@@ -137,6 +157,15 @@ const choiceClass = (active) =>
       :hint="numberHint"
       :aria-label="question.text"
       @update:model-value="update({ number_value: $event === '' ? null : Number($event) })"
+    />
+
+    <UiInput
+      v-else-if="question.question_type === 'date'"
+      class="max-w-xs"
+      type="date"
+      :model-value="model.date_value ?? ''"
+      :aria-label="question.text"
+      @update:model-value="update({ date_value: $event || null })"
     />
 
     <div v-else-if="question.question_type === 'yes_no'" class="flex gap-2" role="radiogroup" :aria-label="question.text">

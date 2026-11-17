@@ -1,7 +1,8 @@
-from datetime import datetime
+import re
+from datetime import date, datetime
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.modules.surveys.models import TEXT_LIST_MAX_ROWS, TEXT_LIST_ROW_LENGTH
 from app.modules.surveys.schemas import MatrixRow, RangeOut, ScaleOut, SectionOut
@@ -58,6 +59,7 @@ class AnswerIn(BaseModel):
     )
     rich_text_value: str | None = Field(default=None, max_length=100000)
     number_value: float | None = None
+    date_value: date | None = None
     boolean_value: bool | None = None
     scale_item_id: int | None = None
     option_id: int | None = None
@@ -68,12 +70,20 @@ class AnswerIn(BaseModel):
     )
     is_skipped: bool = False
 
+    @field_validator('date_value', mode='before')
+    @classmethod
+    def _check_date_format(cls, value):
+        if value is not None and (not isinstance(value, str) or not re.fullmatch(r'[0-9]{4}-[0-9]{2}-[0-9]{2}', value)):
+            raise ValueError('Укажите дату в формате ГГГГ-ММ-ДД')
+        return value
+
 
 class AnswerOut(ORMModel):
     question_id: int
     text_value: str | None
     rich_text_value: str | None
     number_value: float | None
+    date_value: date | None
     boolean_value: bool | None
     scale_item_id: int | None
     option_id: int | None

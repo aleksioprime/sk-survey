@@ -1,6 +1,6 @@
 """Сводка и выгрузка результатов, доступ к ним."""
 
-from datetime import datetime
+from datetime import date, datetime
 from io import BytesIO
 
 import pytest
@@ -78,6 +78,52 @@ async def test_export_xlsx(db, client):
     summary = list(book['Сводка'].values)
     assert summary[0][-1] == 'Обязательность'
     assert summary[1][-1] in ('Обязательный', 'Необязательный')
+
+
+async def test_date_and_short_text_from_survey_to_export(db, client):
+    await login_employee(db, client)
+    survey = (await client.post('/api/v1/surveys', json={'title': 'Анкета сотрудника'})).json()
+    base = f'/api/v1/surveys/{survey["id"]}'
+    question_ids = []
+    for kind, label in [('date', 'Дата выхода на работу'), ('short_text', 'Должность')]:
+        response = await client.post(
+            f'{base}/questions', json={'question_type': kind, 'text': label, 'is_required': True}
+        )
+        assert response.status_code == 201, response.text
+        question_ids.append(response.json()['id'])
+    publishing = (await client.post(f'{base}/publishings', json={'title': 'Адаптация'})).json()
+    url = f'/api/v1/publishings/{publishing["id"]}'
+
+    async with other_client(client) as guest:
+        public = f'/api/v1/public/s/{publishing["public_token"]}'
+        form = (await guest.get(public)).json()
+        assert [q['question_type'] for q in form['questions']] == ['date', 'short_text']
+        started = (await guest.post(f'{public}/responses')).json()
+        headers = {'X-Response-Token': started['response_token']}
+        current = '/api/v1/public/responses/current'
+        date_url, short_url = [f'{current}/answers/{qid}' for qid in question_ids]
+
+        for invalid in ('2025-02-29', '2024-02-29T00:00:00', 1709164800):
+            assert (await guest.put(date_url, json={'date_value': invalid}, headers=headers)).status_code == 422
+        assert (await guest.put(short_url, json={'text_value': 'Первая\nВторая'}, headers=headers)).status_code == 400
+        assert (await guest.put(short_url, json={'text_value': 'Учитель'}, headers=headers)).status_code == 200
+        incomplete = await guest.post(f'{current}/submit', headers=headers)
+        assert incomplete.json()['detail']['question_ids'] == [question_ids[0]]
+
+        valid = '2024-02-29'
+        assert (await guest.put(date_url, json={'date_value': valid}, headers=headers)).status_code == 200
+        state = (await guest.get(current, headers=headers)).json()
+        restored = {answer['question_id']: answer for answer in state['answers']}
+        assert restored[question_ids[0]]['date_value'] == valid
+        assert (await guest.post(f'{current}/submit', headers=headers)).status_code == 200
+
+    results = (await client.get(f'{url}/results')).json()
+    assert [q['texts'][0]['text'] for q in results['questions']] == [valid, 'Учитель']
+    responses = (await client.get(f'{url}/responses')).json()
+    assert [a['text'] for a in responses['items'][0]['answers']] == [valid, 'Учитель']
+    export = await client.get(f'{url}/export.xlsx')
+    book = load_workbook(BytesIO(export.content))
+    assert list(book['Ответы'].values)[1][1:3] == (date(2024, 2, 29), 'Учитель')
 
 
 async def test_individual_responses(db, client, monkeypatch):

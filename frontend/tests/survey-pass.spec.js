@@ -98,6 +98,62 @@ describe('возобновление опроса', () => {
     expect(wrapper.get('textarea').element.value).toBe('Ответ')
   })
 
+  it('восстанавливает дату и сохраняет ответ из однострочного поля', async () => {
+    const survey = await api.fetchPublicSurvey('public')
+    vi.mocked(api.fetchPublicSurvey).mockResolvedValueOnce({
+      ...survey,
+      questions: [
+        { ...questions[0], question_type: 'date' },
+        { ...questions[1], question_type: 'short_text' },
+      ],
+    })
+    vi.mocked(api.fetchResponse).mockResolvedValueOnce({
+      response_id: 42,
+      status: 'in_progress',
+      answers: [{ question_id: 1, date_value: '2024-02-29' }],
+    })
+    vi.mocked(api.saveAnswer).mockResolvedValueOnce({})
+    vi.mocked(api.submitResponse).mockResolvedValueOnce({ status: 'submitted', thank_you_text: 'Спасибо!' })
+    await openSurvey()
+    expect(wrapper.get('article').text()).toContain('Вопрос 2?')
+    await wrapper.findAll('button').find((button) => button.text() === 'Назад').trigger('click')
+    expect(wrapper.get('input[type="date"]').element.value).toBe('2024-02-29')
+    await wrapper.findAll('button').find((button) => button.text() === 'Далее').trigger('click')
+    await wrapper.get('input[type="text"]').setValue('Учитель')
+    await wrapper.findAll('button').find((button) => button.text() === 'Отправить ответы').trigger('click')
+    await flushPromises()
+    expect(api.saveAnswer).toHaveBeenCalledWith('draft', 2, expect.objectContaining({ text_value: 'Учитель' }))
+    expect(wrapper.text()).toContain('Ответы отправлены')
+  })
+
+  it('сохраняет переносы при наборе развёрнутого ответа', async () => {
+    const survey = await api.fetchPublicSurvey('public')
+    vi.mocked(api.fetchPublicSurvey).mockResolvedValueOnce({
+      ...survey,
+      questions: [{ ...questions[0], question_type: 'rich_text' }],
+    })
+    vi.mocked(api.fetchResponse).mockResolvedValueOnce({
+      response_id: 42,
+      status: 'in_progress',
+      answers: [{ question_id: 1, rich_text_value: '<p>Первая строка</p>' }],
+    })
+    vi.mocked(api.saveAnswer).mockResolvedValueOnce({})
+    vi.mocked(api.submitResponse).mockResolvedValueOnce({ status: 'submitted', thank_you_text: 'Спасибо!' })
+
+    await openSurvey()
+    const field = wrapper.get('textarea')
+    await field.setValue('Первая строка\n')
+    expect(field.element.value).toBe('Первая строка\n')
+    await field.setValue('Первая строка\nВторая строка\n\n')
+    expect(field.element.value).toBe('Первая строка\nВторая строка\n\n')
+    await field.setValue('Первая строка\nВторая строка\n\nНовый абзац')
+    await wrapper.findAll('button').find((button) => button.text() === 'Отправить ответы').trigger('click')
+    await flushPromises()
+    expect(api.saveAnswer).toHaveBeenCalledWith('draft', 1, expect.objectContaining({
+      rich_text_value: '<p>Первая строка<br>Вторая строка</p><p>Новый абзац</p>',
+    }))
+  })
+
   it('прокручивает страницу с несколькими вопросами к месту остановки', async () => {
     const survey = await api.fetchPublicSurvey('public')
     vi.mocked(api.fetchPublicSurvey).mockResolvedValue({ ...survey, one_question_per_page: false })
