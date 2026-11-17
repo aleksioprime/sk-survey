@@ -154,6 +154,41 @@ describe('возобновление опроса', () => {
     }))
   })
 
+  it('находит вариант в выпадающем списке и сохраняет его как одиночный выбор', async () => {
+    const survey = await api.fetchPublicSurvey('public')
+    vi.mocked(api.fetchPublicSurvey).mockResolvedValueOnce({
+      ...survey,
+      questions: [{
+        ...questions[0],
+        question_type: 'single_choice',
+        is_dropdown: true,
+        options: Array.from({ length: 10 }, (_, i) => ({ id: i + 10, title: `Подразделение ${i + 1}` })),
+      }],
+    })
+    vi.mocked(api.fetchResponse).mockResolvedValueOnce({
+      response_id: 42,
+      status: 'in_progress',
+      answers: [{ question_id: 1, option_id: 10 }],
+    })
+    vi.mocked(api.saveAnswer).mockResolvedValueOnce({})
+    vi.mocked(api.submitResponse).mockResolvedValueOnce({ status: 'submitted', thank_you_text: 'Спасибо!' })
+
+    await openSurvey()
+    const dropdown = wrapper.get('[role="combobox"]')
+    await dropdown.trigger('click')
+    expect(document.querySelector('[role="option"][aria-selected="true"]').textContent).toContain('Подразделение 1')
+    const search = document.querySelector('input[type="search"]')
+    search.value = 'Подразделение 8'
+    search.dispatchEvent(new Event('input'))
+    await flushPromises()
+    const matches = document.querySelectorAll('[role="option"]')
+    expect(matches).toHaveLength(1)
+    matches[0].click()
+    await wrapper.findAll('button').find((button) => button.text() === 'Отправить ответы').trigger('click')
+    await flushPromises()
+    expect(api.saveAnswer).toHaveBeenCalledWith('draft', 1, expect.objectContaining({ option_id: 17 }))
+  })
+
   it('прокручивает страницу с несколькими вопросами к месту остановки', async () => {
     const survey = await api.fetchPublicSurvey('public')
     vi.mocked(api.fetchPublicSurvey).mockResolvedValue({ ...survey, one_question_per_page: false })

@@ -3,7 +3,7 @@
  * Поле ответа на вопрос любого типа. v-model - ответ в форме API:
  * { text_value, rich_text_value, number_value, date_value, boolean_value, scale_item_id, option_id, option_ids, ranking, is_skipped }.
  */
-import { UiInput } from 'sk-ui'
+import { UiInput, UiSelect } from 'sk-ui'
 import { computed, ref, useId, watch } from 'vue'
 import TextListField from './TextListField.vue'
 import MatrixField from './MatrixField.vue'
@@ -190,6 +190,19 @@ const choiceClass = (active) =>
       :model-value="model.matrix_choices || {}"
       @update:model-value="update({ matrix_choices: $event })"
     />
+
+    <UiSelect
+      v-else-if="question.question_type === 'single_choice' && question.is_dropdown"
+      class="w-full"
+      :model-value="model.option_id"
+      :disabled="disabled"
+      :invalid="!!error"
+      :aria-label="question.text"
+      @update:model-value="update({ option_id: $event })"
+    >
+      <option :value="null" disabled>Выберите вариант</option>
+      <option v-for="option in options" :key="option.id" :value="option.id">{{ option.title }}</option>
+    </UiSelect>
 
     <div v-else-if="question.question_type === 'single_choice'" class="grid gap-2" role="radiogroup" :aria-label="question.text">
       <button

@@ -135,6 +135,7 @@ class QuestionIn(BaseModel):
     min_number: float | None = None
     max_number: float | None = None
     is_options_shuffled: bool = False
+    is_dropdown: bool = False
     options: list[OptionIn] = []
     ranges: list[RangeIn] = []
     matrix_rows: list[MatrixRow] = Field(default=[], max_length=50)
@@ -143,6 +144,8 @@ class QuestionIn(BaseModel):
     def _check(self):
         if self.question_type in ('single_choice', 'multiple_choice', 'ranking') and len(self.options) < 2:
             raise ValueError('Добавьте хотя бы два варианта ответа')
+        if self.is_dropdown and self.question_type != 'single_choice':
+            raise ValueError('Выпадающий список доступен только при выборе одного варианта')
         if self.question_type in MATRIX_TYPES:
             if not self.matrix_rows or len({row.id for row in self.matrix_rows}) != len(self.matrix_rows):
                 raise ValueError('Добавьте строки матрицы с уникальными идентификаторами')
@@ -182,6 +185,7 @@ class QuestionOut(ORMModel):
     min_number: float | None
     max_number: float | None
     is_options_shuffled: bool
+    is_dropdown: bool
     options: list[OptionOut]
     ranges: list[RangeOut]
     matrix_rows: list[MatrixRow]

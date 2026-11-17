@@ -33,6 +33,7 @@ class PublicQuestion(ORMModel):
     min_number: float | None
     max_number: float | None
     is_options_shuffled: bool
+    is_dropdown: bool
     options: list[PublicOption]
     ranges: list[RangeOut]
     matrix_rows: list[MatrixRow]

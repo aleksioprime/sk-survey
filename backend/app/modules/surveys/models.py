@@ -155,6 +155,7 @@ class Question(IdMixin, TimestampMixin, Base):
     min_number: Mapped[float | None] = mapped_column(Float)
     max_number: Mapped[float | None] = mapped_column(Float)
     is_options_shuffled: Mapped[bool] = mapped_column(Boolean, default=False, server_default='false')
+    is_dropdown: Mapped[bool] = mapped_column(Boolean, default=False, server_default='false')
 
     min_rows: Mapped[int | None] = mapped_column(Integer)
     max_rows: Mapped[int | None] = mapped_column(Integer)

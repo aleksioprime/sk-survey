@@ -258,6 +258,7 @@ async def copy_survey(db: AsyncSession, source: Survey, user: User) -> Survey:
                     'min_number',
                     'max_number',
                     'is_options_shuffled',
+                    'is_dropdown',
                     'matrix_rows',
                 )
             },
@@ -425,7 +426,10 @@ async def update_question(db: AsyncSession, question: Question, data: QuestionIn
         rows = [row.model_dump() for row in data.matrix_rows]
         if current != incoming or question.matrix_rows != rows:
             raise conflict('На матрицу уже отвечали - строки и варианты менять нельзя')
-    for field, value in data.model_dump(exclude={'options', 'ranges'}).items():
+    changes = data.model_dump(exclude={'options', 'ranges'})
+    if data.question_type == question.question_type and 'is_dropdown' not in data.model_fields_set:
+        changes.pop('is_dropdown')
+    for field, value in changes.items():
         setattr(question, field, value)
 
     await db.refresh(question, ['options', 'ranges'])

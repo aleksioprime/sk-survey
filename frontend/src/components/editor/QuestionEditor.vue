@@ -32,6 +32,7 @@ const form = ref({
   min_number: source?.min_number ?? null,
   max_number: source?.max_number ?? null,
   is_options_shuffled: source?.is_options_shuffled ?? false,
+  is_dropdown: source?.is_dropdown ?? false,
   options: (source?.options ?? [{ title: '' }, { title: '' }]).map((o) => ({ ...o })),
   matrix_rows: (source?.matrix_rows || []).map((row) => ({ ...row })),
   ranges: (source?.ranges ?? []).map((r) => ({ ...r })),
@@ -121,6 +122,7 @@ function save() {
     min_number: f.question_type === 'number' ? numberOrNull(f.min_number) : null,
     max_number: f.question_type === 'number' ? numberOrNull(f.max_number) : null,
     is_options_shuffled: hasOptions.value && !isMatrix.value && f.is_options_shuffled,
+    is_dropdown: f.question_type === 'single_choice' && f.is_dropdown,
     matrix_rows: isMatrix.value ? f.matrix_rows.map((row) => ({ ...row, title: row.title.trim() })) : [],
     options: hasOptions.value
       ? f.options.filter((o) => o.title.trim()).map((o) => ({ id: o.id, title: o.title.trim(), description: o.description || '', value: o.value || '', score: o.score ?? null, is_active: o.is_active ?? true, exclude_from_base: supportsExclusion.value && !!o.exclude_from_base }))
@@ -230,6 +232,9 @@ function save() {
 
       <div v-if="hasOptions" :class="changed('options')" class="ui-change-group grid gap-2">
         <p class="text-sm font-medium">{{ isMatrix ? 'Общие варианты для всех строк' : 'Варианты ответа' }}</p>
+        <label v-if="form.question_type === 'single_choice'" class="flex items-center gap-2 px-2 py-1 text-sm" :class="changed('is_dropdown')">
+          <input v-model="form.is_dropdown" type="checkbox" class="accent-brand-600" /> Показывать выпадающим списком
+        </label>
         <div v-for="(option, index) in form.options" :key="option.id || `new-${index}`" class="grid gap-1 rounded-control border border-line p-2">
           <div class="flex flex-wrap items-center gap-2">
             <textarea

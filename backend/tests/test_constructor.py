@@ -37,6 +37,37 @@ async def test_validation_of_question(db, client):
     assert no_scale.status_code == 422
 
 
+async def test_dropdown_display_in_preview_publication_and_copy(db, client):
+    await login_employee(db, client)
+    built = await build_survey(client)
+    base = f'/api/v1/surveys/{built["survey"]["id"]}'
+    question = built['questions']['single_choice']
+    assert question['is_dropdown'] is False
+    question_url = f'/api/v1/questions/{question["id"]}'
+    public_url = f'/api/v1/public/s/{built["publishing"]["public_token"]}'
+    started = (await client.post(f'{public_url}/responses')).json()
+    headers = {'X-Response-Token': started['response_token']}
+    answer_url = f'/api/v1/public/responses/current/answers/{question["id"]}'
+    chosen = question['options'][0]['id']
+    assert (await client.put(answer_url, json={'option_id': chosen}, headers=headers)).status_code == 200
+
+    change = await client.put(question_url, json={**question, 'is_dropdown': True})
+    assert change.status_code == 200, change.text
+    assert change.json()['answers_count'] == 1
+    unchanged = await client.put(question_url, json={k: v for k, v in question.items() if k != 'is_dropdown'})
+    assert unchanged.json()['is_dropdown'] is True
+    for url in (f'{base}/preview', public_url):
+        form = (await client.get(url)).json()
+        shown = next(q for q in form['questions'] if q['id'] == question['id'])
+        assert shown['is_dropdown'] is True
+        assert chosen in [o['id'] for o in shown['options']]
+    state = (await client.get('/api/v1/public/responses/current', headers=headers)).json()
+    assert state['answers'][0]['option_id'] == chosen
+
+    copied = (await client.post(f'{base}/copy')).json()
+    assert next(q for q in copied['questions'] if q['question_type'] == 'single_choice')['is_dropdown'] is True
+
+
 async def test_pagination_settings_in_preview_publication_and_copy(db, client):
     await login_employee(db, client)
     survey = (await client.post('/api/v1/surveys', json={'title': 'Опрос'})).json()
