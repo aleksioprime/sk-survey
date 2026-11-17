@@ -47,14 +47,44 @@ describe('возобновление опроса', () => {
     vi.restoreAllMocks()
   })
 
-  async function openSurvey() {
+  async function openSurvey(preview = false) {
     wrapper = mount(SurveyPassView, {
       attachTo: document.body,
-      props: { token: 'public' },
+      props: { token: 'public', preview },
       global: { stubs: { SchoolFooter: true } },
     })
     await flushPromises()
   }
+
+  it('в предпросмотре листает пустые обязательные страницы и показывает экран завершения', async () => {
+    vi.mocked(api.fetchPreview).mockResolvedValueOnce(await api.fetchPublicSurvey('public'))
+    vi.mocked(api.startResponse).mockClear()
+    vi.mocked(api.submitResponse).mockClear()
+    await openSurvey(true)
+    const clickButton = (label) => wrapper.findAll('button').find((button) => button.text() === label).trigger('click')
+
+    await clickButton('Начать')
+    expect(wrapper.get('article').text()).toContain('Вопрос 1?')
+    await clickButton('Далее')
+    expect(wrapper.get('article').text()).toContain('Вопрос 2?')
+    await clickButton('Назад')
+    expect(wrapper.get('article').text()).toContain('Вопрос 1?')
+    await clickButton('Далее')
+    await clickButton('Далее')
+    expect(wrapper.get('article').text()).toContain('Вопрос 3?')
+    await clickButton('Завершить предпросмотр')
+    expect(wrapper.text()).toContain('Предпросмотр завершён')
+    expect(wrapper.text()).toContain('Спасибо!')
+    expect(api.startResponse).not.toHaveBeenCalled()
+    expect(api.submitResponse).not.toHaveBeenCalled()
+  })
+
+  it('в публикации останавливает переход с пустого обязательного вопроса', async () => {
+    await openSurvey()
+    await wrapper.findAll('button').find((button) => button.text() === 'Далее').trigger('click')
+    expect(wrapper.get('article').text()).toContain('Вопрос 2?')
+    expect(wrapper.get('article').text()).toContain('Это обязательный вопрос')
+  })
 
   it.each([true, false])('пропускает вступление для старого черновика (анонимный: %s)', async (isAnonymous) => {
     const survey = await api.fetchPublicSurvey('public')

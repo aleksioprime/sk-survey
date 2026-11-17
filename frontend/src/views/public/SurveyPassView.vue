@@ -328,11 +328,11 @@ function checkPage() {
 }
 
 async function goNext() {
-  if (busy.value || !checkPage()) return
+  if (busy.value || (!props.preview && !checkPage())) return
   busy.value = true
   submitError.value = ''
   try {
-    if (!(await flush())) return
+    if (!props.preview && !(await flush())) return
     page.value += 1
     rememberPage()
     window.scrollTo({ top: 0 })
@@ -353,16 +353,17 @@ function rememberPage() {
 
 async function submit() {
   submitError.value = ''
-  if (busy.value || !checkPage()) return
+  if (busy.value) return
+  if (props.preview) {
+    thankYou.value = survey.value.thank_you_text
+    stage.value = 'done'
+    window.scrollTo({ top: 0 })
+    return
+  }
+  if (!checkPage()) return
   busy.value = true
   try {
     if (!(await flush())) return
-    if (props.preview) {
-      thankYou.value = survey.value.thank_you_text
-      stage.value = 'done'
-      window.scrollTo({ top: 0 })
-      return
-    }
     const result = await submitResponse(responseToken.value)
     thankYou.value = result.thank_you_text
     stage.value = 'done'
