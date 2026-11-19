@@ -23,6 +23,7 @@ pyjwt==2.10.0
 aiosmtplib==3.0.2
 email-validator==2.2.0
 
-# Выгрузка в Excel, очистка форматированного текста
+# Выгрузка в Excel и Word, очистка форматированного текста
 openpyxl==3.1.5
+python-docx==1.2.0
 nh3==0.2.18

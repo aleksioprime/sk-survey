@@ -1,6 +1,7 @@
 from io import BytesIO
 
 import pytest
+from docx import Document
 from openpyxl import load_workbook
 
 from tests.conftest import other_client
@@ -79,6 +80,14 @@ async def test_matrix_roundtrip(db, client, kind):
     assert schedule['options'][1]['percent'] == (100 if kind == 'matrix_multiple' else 50)
     assert schedule['excluded'][0]['percent'] == (66.7 if kind == 'matrix_multiple' else 33.3)
     assert meetings['base'] == 0 and meetings['excluded'][0]['percent'] == 100
+
+    first = (await client.get(f'{pub_url}/responses')).json()['items'][0]
+    document = await client.get(f'{pub_url}/responses/{first["id"]}/export.docx')
+    paragraphs = [p.text for p in Document(BytesIO(document.content)).paragraphs]
+    assert 'Встречи: Не могу сравнить' in paragraphs
+    assert next(p for p in paragraphs if p.startswith('Расписание: ')) == 'Расписание: ' + (
+        'Лучше; Без изменений; Не могу сравнить' if kind == 'matrix_multiple' else 'Лучше'
+    )
 
     book = load_workbook(BytesIO((await client.get(f'{pub_url}/export.xlsx')).content))
     rows = list(book['Ответы'].values)

@@ -8,13 +8,14 @@ from io import BytesIO
 from zoneinfo import ZoneInfo
 
 from openpyxl import Workbook
-from openpyxl.styles import Alignment, Font
-from openpyxl.utils import get_column_letter
+from openpyxl.styles import Font
 from sk_common.people.models import User
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.responses.models import STATUS_SUBMITTED, Answer, Response
+from app.modules.results.excel_layout import format_sheet
+from app.modules.results.office_text import rich_text_to_text, xml_text
 from app.modules.results.schemas import (
     ChoiceBreakdown,
     DistributionItem,
@@ -61,6 +62,13 @@ def _ordered_responses(query):
 async def load(db: AsyncSession, publishing: Publishing, include_in_progress: bool = False) -> Dataset:
     responses = list(await db.scalars(_ordered_responses(_response_query(publishing, include_in_progress))))
     return await _load_dataset(db, publishing, responses)
+
+
+async def load_response(db: AsyncSession, publishing: Publishing, response_id: int) -> Dataset | None:
+    response = await db.scalar(
+        select(Response).where(Response.publishing_id == publishing.id, Response.id == response_id)
+    )
+    return await _load_dataset(db, publishing, [response]) if response else None
 
 
 async def _load_dataset(db: AsyncSession, publishing: Publishing, responses: list[Response]) -> Dataset:
@@ -235,7 +243,7 @@ def _ranking(question: Question, answers: list[Answer]) -> list[RankingStat]:
 # --- Выгрузка -------------------------------------------------------------------------------
 
 
-def answer_text(question: Question, answer: Answer | None, scale: Scale | None) -> str:
+def answer_text(question: Question, answer: Answer | None, scale: Scale | None, *, separator: str = '; ') -> str:
     if answer is None:
         return ''
     if answer.is_skipped:
@@ -253,9 +261,9 @@ def answer_text(question: Question, answer: Answer | None, scale: Scale | None) 
     if kind == 'single_choice':
         return titles.get(answer.option_id, '')
     if kind == 'multiple_choice':
-        return '; '.join(titles.get(i, '') for i in answer.option_ids)
+        return separator.join(titles.get(i, '') for i in answer.option_ids)
     if kind == 'ranking':
-        return '; '.join(f'{item.rank}. {titles.get(item.option_id, "")}' for item in answer.ranking)
+        return separator.join(f'{item.rank}. {titles.get(item.option_id, "")}' for item in answer.ranking)
     if kind == 'yes_no':
         return '' if answer.boolean_value is None else ('Да' if answer.boolean_value else 'Нет')
     if kind == 'scale' and answer.scale_item_id and scale:
@@ -265,7 +273,7 @@ def answer_text(question: Question, answer: Answer | None, scale: Scale | None) 
     return ''
 
 
-def _matrix_values(question: Question, answer: Answer | None) -> list[str]:
+def matrix_values(question: Question, answer: Answer | None) -> list[str]:
     choices = answer.matrix_choices if answer else {}
     titles = {option.id: option.title for option in question.options}
     return [
@@ -280,7 +288,7 @@ def _individual_answer(question: Question, answer: Answer, scale: Scale | None) 
     if question.question_type in MATRIX_TYPES and not answer.is_skipped:
         text = '\n'.join(
             f"{row['title']}: {value}"
-            for row, value in zip(question.matrix_rows, _matrix_values(question, answer), strict=True)
+            for row, value in zip(question.matrix_rows, matrix_values(question, answer), strict=True)
             if value
         )
     else:
@@ -351,7 +359,6 @@ def export_xlsx(data: Dataset) -> bytes:
     sheet = book.active
     sheet.title = 'Ответы'
     personal = not data.publishing.is_anonymous
-    text_list_columns = []
     header = ['№']
     if personal:
         header += ['Отправлен (МСК)', 'ФИО', 'Email', 'Класс']
@@ -360,12 +367,10 @@ def export_xlsx(data: Dataset) -> bytes:
             header.extend(f"{question.text} / {row['title']}" for row in question.matrix_rows)
         else:
             header.append(question.text)
-            if question.question_type == TEXT_LIST:
-                text_list_columns.append(len(header))
     header.append('Начало попытки (МСК)')
     if not personal:
         header.append('Отправлен (МСК)')
-    sheet.append(header)
+    sheet.append([xml_text(label) for label in header])
     for number, response in enumerate(data.responses, 1):
         by_question = {a.question_id: a for a in response.answers}
         row = [number]
@@ -381,24 +386,16 @@ def export_xlsx(data: Dataset) -> bytes:
         for question in data.questions:
             answer = by_question.get(question.id)
             if question.question_type in MATRIX_TYPES:
-                row.extend(_matrix_values(question, answer))
+                row.extend(matrix_values(question, answer))
             elif question.question_type == 'date' and answer and not answer.is_skipped and answer.date_value:
                 row.append(answer.date_value)
             else:
-                row.append(answer_text(question, answer, data.scales.get(question.scale_id)))
+                value = answer_text(question, answer, data.scales.get(question.scale_id))
+                row.append(rich_text_to_text(value) if question.question_type == 'rich_text' else value)
         row.append(_excel_time(response.created_at))
         if not personal:
             row.append(_excel_time(response.submitted_at))
-        sheet.append(row)
-        for column in text_list_columns:
-            sheet.cell(row=sheet.max_row, column=column).alignment = Alignment(wrap_text=True, vertical='top')
-    for cell in sheet[1]:
-        cell.font = Font(bold=True)
-        cell.alignment = Alignment(wrap_text=True, vertical='top')
-    for index in range(1, len(header) + 1):
-        sheet.column_dimensions[get_column_letter(index)].width = 14 if index <= 2 else 32
-    for column in text_list_columns:
-        sheet.column_dimensions[get_column_letter(column)].width = 40
+        sheet.append([xml_text(value) if isinstance(value, str) else value for value in row])
     sheet.freeze_panes = 'C2' if personal else 'B2'
 
     summary = book.create_sheet('Сводка')
@@ -406,33 +403,26 @@ def export_xlsx(data: Dataset) -> bytes:
         ['Вопрос / строка матрицы', 'Ответ', 'Количество', '%', 'База', 'От чего рассчитан %', 'Обязательность']
     )
     for result in summarize(data).questions:
-        summary.append([result.text])
+        summary.append([xml_text(result.text)])
         summary.cell(summary.max_row, 1).font = Font(bold=True)
         summary.cell(summary.max_row, 7, 'Обязательный' if result.is_required else 'Необязательный')
         if result.comparison:
             _export_choices(summary, result.comparison, result.answered)
         else:
             for option in result.options:
-                summary.append(['', option.title, option.count, option.percent])
+                summary.append(['', xml_text(option.title), option.count, option.percent])
         for row in result.matrix_rows:
-            summary.append([row.title])
+            summary.append([xml_text(row.title)])
             _export_choices(summary, row, row.answered)
         for item in result.ranking:
-            summary.append(['', f'{item.title} - средняя позиция', item.average_rank, None])
+            summary.append(['', f'{xml_text(item.title)} - средняя позиция', item.average_rank, None])
         for item in result.ranges:
-            summary.append(['', item.title, item.count, item.percent])
+            summary.append(['', xml_text(item.title), item.count, item.percent])
         if result.mean is not None:
             summary.append(['', 'Среднее', result.mean, None])
-    summary.column_dimensions['A'].width = 60
-    summary.column_dimensions['B'].width = 40
-
-    summary.column_dimensions['F'].width = 32
-    summary.column_dimensions['G'].width = 20
+    summary.freeze_panes = 'A2'
     for worksheet in book:
-        for cells in worksheet.iter_rows():
-            for cell in cells:
-                if cell.data_type == 'f':
-                    cell.data_type = 's'
+        format_sheet(worksheet)
     buffer = BytesIO()
     book.save(buffer)
     return buffer.getvalue()
@@ -442,6 +432,8 @@ def _export_choices(sheet, breakdown: ChoiceBreakdown, answered: int) -> None:
     for option in breakdown.options:
         percent = option.percent if breakdown.base else None
         summary_base = 'Сравнимые ответы' if breakdown.excluded else 'Ответившие'
-        sheet.append(['', option.title, option.count, percent, breakdown.base, summary_base])
+        sheet.append(['', xml_text(option.title), option.count, percent, breakdown.base, summary_base])
     for option in breakdown.excluded:
-        sheet.append(['', option.title, option.count, option.percent if answered else None, answered, 'Все ответившие'])
+        sheet.append(
+            ['', xml_text(option.title), option.count, option.percent if answered else None, answered, 'Все ответившие']
+        )

@@ -1,8 +1,9 @@
 <script setup>
 import { computed } from 'vue'
 import { UiBadge, UiButton } from 'sk-ui'
+import { responseWordUrl } from '@/api/surveys'
 
-const props = defineProps({ responses: { type: Object, required: true }, canEdit: Boolean })
+const props = defineProps({ publishingId: { type: String, required: true }, responses: { type: Object, required: true }, canEdit: Boolean })
 const emit = defineEmits(['page', 'remove'])
 const pageCount = computed(() => Math.ceil((props.responses.responses + props.responses.in_progress) / props.responses.page_size))
 const attemptTime = new Intl.DateTimeFormat('ru-RU', {
@@ -41,8 +42,11 @@ const attemptTime = new Intl.DateTimeFormat('ru-RU', {
         </div>
       </dl>
       <p v-else class="border-t border-line px-4 py-4 text-sm text-ink-muted">В этом прохождении пока нет ответов.</p>
-      <div v-if="canEdit" class="flex justify-end px-4 pb-4">
-        <UiButton size="sm" variant="ghost" class="text-red-700" @click="emit('remove', item)">Удалить ответ</UiButton>
+      <div class="flex flex-wrap items-center justify-end gap-3 px-4 pb-4">
+        <a :href="responseWordUrl(publishingId, item.id)" class="rounded-control px-2 py-1 text-sm font-medium text-brand-700 hover:underline">
+          Скачать анкету в Word
+        </a>
+        <UiButton v-if="canEdit" size="sm" variant="ghost" class="text-red-700" @click="emit('remove', item)">Удалить ответ</UiButton>
       </div>
     </details>
     <nav v-if="pageCount > 1" aria-label="Страницы ответов" class="flex flex-wrap items-center gap-3 text-sm">

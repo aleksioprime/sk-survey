@@ -4,6 +4,7 @@ from datetime import date, datetime
 from io import BytesIO
 
 import pytest
+from docx import Document
 from openpyxl import load_workbook
 
 from app.modules.results import service
@@ -65,19 +66,73 @@ async def test_summary(db, client):
 async def test_export_xlsx(db, client):
     await login_employee(db, client)
     built = await build_survey(client)
+    long_text = '=1+1\n' + 'Длинный ответ с переносом по словам. ' * 15
     async with other_client(client) as guest:
+        await _answer(guest, built, {'text': {'text_value': long_text.strip()}})
         await _answer(guest, built)
     response = await client.get(f'/api/v1/publishings/{built["publishing"]["id"]}/export.xlsx')
     assert response.status_code == 200
     book = load_workbook(BytesIO(response.content))
     rows = list(book['Ответы'].values)
     assert rows[0][:2] == ('№', 'Вопрос text')
-    assert rows[1][1] == 'Всё хорошо' and rows[1][5] == '42' and rows[1][6] == 'Да'
+    assert rows[1][1] == long_text.strip() and rows[1][5] == '42' and rows[1][6] == 'Да'
+    assert rows[1][2] == 'Ок жирный'
+    sheet = book['Ответы']
+    assert sheet['B2'].data_type == 's' and sheet['B2'].alignment.wrap_text
+    assert sheet.column_dimensions['A'].width < sheet.column_dimensions['B'].width <= 64
+    assert sheet.row_dimensions[2].height > sheet.row_dimensions[3].height
+    assert book['Сводка']['A1'].alignment.wrap_text
+    assert book['Сводка'].column_dimensions['A'].width > book['Сводка'].column_dimensions['D'].width
     assert rows[0][-2:] == ('Начало попытки (МСК)', 'Отправлен (МСК)')
     assert isinstance(rows[1][-2], datetime) and rows[1][-2] <= rows[1][-1]
     summary = list(book['Сводка'].values)
     assert summary[0][-1] == 'Обязательность'
     assert summary[1][-1] in ('Обязательный', 'Необязательный')
+
+
+async def test_export_individual_docx(db, client):
+    user = await login_employee(db, client)
+    built = await build_survey(client, anonymous=False)
+    await _answer(client, built)
+    publication = f'/api/v1/publishings/{built["publishing"]["id"]}'
+    (item,) = (await client.get(f'{publication}/responses')).json()['items']
+    path = f'/responses/{item["id"]}/export.docx'
+    other = await build_survey(client)
+    assert (await client.get(f'/api/v1/publishings/{other["publishing"]["id"]}{path}')).status_code == 404
+    async with other_client(client) as observer:
+        assert (await observer.get(publication + path)).status_code == 401
+        reader = await login_employee(db, observer, email='reader@skolkovo.example.org')
+        assert (await observer.get(publication + path)).status_code == 404
+        await client.patch(publication, json={'observer_person_ids': [reader.person_id]})
+        download = await observer.get(publication + path)
+    assert download.status_code == 200
+    assert download.headers['Content-Disposition'].endswith('.docx')
+    assert download.headers['Content-Type'].endswith('wordprocessingml.document')
+    text = '\n'.join(p.text for p in Document(BytesIO(download.content)).paragraphs)
+    for expected in [
+        'Пульс-опрос',
+        'Весна',
+        'Работа',
+        user.person.full_name,
+        'Статус: Отправлен',
+        '1. Вопрос text',
+        'Всё хорошо',
+        'Ок жирный',
+        '1. Нет',
+        'Да, полностью',
+    ]:
+        assert expected in text
+
+    async with other_client(client) as guest:
+        await _answer(guest, other)
+        started = await guest.post(f'/api/v1/public/s/{other["publishing"]["public_token"]}/responses')
+        assert started.status_code == 201
+    url = f'/api/v1/publishings/{other["publishing"]["id"]}/responses'
+    draft = (await client.get(url, params={'include_in_progress': True})).json()['items'][-1]
+    download = await client.get(f'{url}/{draft["id"]}/export.docx')
+    text = '\n'.join(p.text for p in Document(BytesIO(download.content)).paragraphs)
+    assert 'Анонимный ответ' in text and 'Статус: Не отправлен' in text and 'Нет ответа' in text
+    assert user.person.full_name not in text and 'Всё хорошо' not in text
 
 
 async def test_date_and_short_text_from_survey_to_export(db, client):

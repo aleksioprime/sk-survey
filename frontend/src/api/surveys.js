@@ -41,6 +41,7 @@ export const getResults = (id, includeInProgress = false) =>
 export const getIndividualResponses = (id, includeInProgress, page) =>
   get(`/v1/publishings/${id}/responses`, { params: { include_in_progress: includeInProgress, page } })
 export const deleteIndividualResponse = (id, responseId) => http.delete(`/v1/publishings/${id}/responses/${responseId}`)
+export const responseWordUrl = (id, responseId) => `/api/v1/publishings/${id}/responses/${responseId}/export.docx`
 export const exportUrl = (id, includeInProgress = false) =>
   `/api/v1/publishings/${id}/export.xlsx?include_in_progress=${includeInProgress}`
 

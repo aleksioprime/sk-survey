@@ -4,7 +4,8 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import * as api from '@/api/surveys'
 import PublishingResultsView from '@/views/publishings/PublishingResultsView.vue'
 
-vi.mock('@/api/surveys', () => ({
+vi.mock('@/api/surveys', async (importOriginal) => ({
+  ...await importOriginal(),
   deleteIndividualResponse: vi.fn(),
   getIndividualResponses: vi.fn(),
   getPublishing: vi.fn(),
@@ -61,6 +62,9 @@ describe('удаление ответа в результатах', () => {
     const wrapper = await openResults(false)
     try {
       expect(wrapper.text()).toContain('Ответ 1')
+      expect(wrapper.get('a[href$=".docx"]').attributes('href')).toBe(
+        '/api/v1/publishings/5/responses/9007199254740993/export.docx',
+      )
       expect(button(wrapper, 'Удалить ответ')).toBeUndefined()
     } finally {
       wrapper.unmount()

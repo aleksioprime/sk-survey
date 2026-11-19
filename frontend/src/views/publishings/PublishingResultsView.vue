@@ -152,6 +152,7 @@ const format = (value) => (value == null ? '-' : Number(value).toLocaleString('r
       <PublishingResponseList
         v-else-if="results && showResponses"
         :key="results.page"
+        :publishing-id="props.id"
         :responses="results"
         :can-edit="publishing.can_edit"
         @page="setQuery({ page: $event === 1 ? undefined : $event })"
