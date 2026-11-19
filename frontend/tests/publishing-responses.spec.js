@@ -19,7 +19,10 @@ const list = (items) => ({ items, responses: items.length, in_progress: 0, page:
 async function openResults(canEdit) {
   vi.mocked(api.getReportOptions).mockResolvedValue({
     publications: [{ id: '5', title: 'Весна' }, { id: '8', title: 'Осень' }],
-    questions: [{ id: '9', text: 'Класс', options: [{ id: '91', title: 'Десятый' }, { id: '92', title: 'Девятый' }] }],
+    questions: [{
+      id: '9', text: 'Подразделение',
+      options: Array.from({ length: 20 }, (_, i) => ({ id: String(91 + i), title: `Отдел №${i + 1}` })),
+    }],
   })
   vi.mocked(api.getPublishing).mockResolvedValue({ can_edit: canEdit, submitted_count: 1 })
   vi.mocked(api.getIndividualResponses).mockResolvedValue(list([answer]))
@@ -85,16 +88,26 @@ it('применяет выбор публикаций и вариантов к 
     await button(panel, 'Добавить фильтр').trigger('click')
     await panel.get('[role="combobox"]').trigger('click')
     await panel.get('[role="option"]:not([aria-disabled])').trigger('click')
-    await panel.get('input[value="91"]').setValue(true)
+    const departments = panel.get('#report-options-9[role="combobox"]')
+    expect(departments.attributes('aria-expanded')).toBe('false')
+    await departments.trigger('click')
+    const search = panel.get('input[type="search"]')
+    for (const name of ['Отдел №11', 'Отдел №19']) {
+      await search.setValue(name)
+      const matches = panel.findAll('[role="option"]')
+      expect(matches.map((item) => item.text())).toEqual([name])
+      await matches[0].trigger('click')
+    }
+    await search.trigger('keydown', { key: 'Escape' })
     vi.mocked(api.getIndividualResponses).mockResolvedValue(list([{ ...answer, publishing_id: '8' }]))
     await panel.trigger('submit')
     await flushPromises()
-    const selection = { publications: ['8'], options: ['91'] }
+    const selection = { publications: ['8'], options: ['101', '109'] }
     expect(api.getIndividualResponses).toHaveBeenLastCalledWith('5', false, 1, selection)
     expect(wrapper.get('h1').text()).toBe('Общая статистика')
     expect(wrapper.get('a[href$=".docx"]').attributes('href')).toContain('/publishings/8/')
-    expect(wrapper.get('a[href*="export.xlsx"]').attributes('href')).toContain('publication=8&option=91')
-    expect(wrapper.text()).toContain('Класс: Десятый')
+    expect(wrapper.get('a[href*="export.xlsx"]').attributes('href')).toContain('publication=8&option=101&option=109')
+    expect(wrapper.text()).toContain('Подразделение: Отдел №11, Отдел №19')
     vi.mocked(api.getResults).mockResolvedValue({ responses: 0, in_progress: 0, questions: [] })
     await button(wrapper, 'Сводка').trigger('click')
     await flushPromises()
