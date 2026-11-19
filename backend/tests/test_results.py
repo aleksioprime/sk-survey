@@ -297,11 +297,18 @@ async def test_combined_filtered_report(db, client, monkeypatch):
     base = f'/api/v1/publishings/{publication["id"]}'
     q = built['questions']
     single = [o['id'] for o in q['single_choice']['options']]
-    multiple = [o['id'] for o in q['multiple_choice']['options']]
+    multiple_question = q['multiple_choice']
+    multiple = [o['id'] for o in multiple_question['options']]
+    multiple_question['options'][2]['exclude_from_base'] = True
+    assert (await client.put(f'/api/v1/questions/{multiple_question["id"]}', json=multiple_question)).status_code == 200
     await _answer(
         client,
         {**built, 'publishing': named},
-        {'single_choice': {'option_id': single[1]}, 'scale': {'number_value': 2}},
+        {
+            'single_choice': {'option_id': single[1]},
+            'multiple_choice': {'option_ids': [multiple[0], multiple[2]]},
+            'scale': {'number_value': 2},
+        },
     )
     async with other_client(client) as guest:
         await _answer(guest, built)
@@ -315,8 +322,22 @@ async def test_combined_filtered_report(db, client, monkeypatch):
     params = {'publication': [named['id'], named['id']], 'option': [*single[:2], *multiple[:2]]}
     result = (await client.get(f'{base}/results', params=params)).json()
     assert result['responses'] == 2 and result['in_progress'] == 0
-    assert next(i for i in result['questions'] if i['question_type'] == 'scale')['mean'] == 5
-    assert (await client.get(f'{base}/results', params={'publication': named['id']})).json()['responses'] == 4
+    questions = {i['question_type']: i for i in result['questions']}
+    assert questions['scale']['mean'] == 5
+    assert [o['id'] for o in questions['single_choice']['options']] == single[:2]
+    assert questions['single_choice']['hidden_options_count'] == 1
+    comparison = questions['multiple_choice']['comparison']
+    assert comparison['base'] == 2 and not comparison['excluded']
+    assert [(o['id'], o['count'], o['percent']) for o in comparison['options']] == [
+        (multiple[0], 2, 100.0),
+        (multiple[1], 1, 50.0),
+    ]
+    assert questions['multiple_choice']['hidden_options_count'] == 1
+    unfiltered = (await client.get(f'{base}/results', params={'publication': named['id']})).json()
+    assert unfiltered['responses'] == 4
+    unfiltered_multiple = next(i for i in unfiltered['questions'] if i['question_type'] == 'multiple_choice')
+    assert unfiltered_multiple['comparison']['excluded'][0]['id'] == multiple[2]
+    assert unfiltered_multiple['hidden_options_count'] == 0
     drafts = (await client.get(f'{base}/responses', params={**params, 'include_in_progress': True})).json()
     assert drafts['responses'] == 2 and drafts['in_progress'] == 1
     assert [i['respondent'] for i in drafts['items']] == [user.person.full_name, None, None]
@@ -331,7 +352,17 @@ async def test_combined_filtered_report(db, client, monkeypatch):
     assert header[:2] == ('№', 'Публикация')
     assert personal[1] == 'Осень' and personal[header.index('ФИО')] == user.person.full_name
     assert anonymous[1] == publication['title'] and anonymous[header.index('Email')] is None
-    assert any(row[1:3] == ('Среднее', 5) for row in book['Сводка'].values)
+    assert set(personal[header.index(multiple_question['text'])].split('; ')) == {'Да, полностью', 'Нет'}
+    summary = list(book['Сводка'].values)
+    assert any(row[1:3] == ('Среднее', 5) for row in summary)
+    start = next(i for i, row in enumerate(summary) if row[0] == multiple_question['text'])
+    assert [row[1] for row in summary[start + 1 : start + 4]] == [
+        'Остальные варианты скрыты фильтром.',
+        'Да, полностью',
+        'Частично',
+    ]
+    assert summary[start + 2][4:6] == (2, 'Сравнимые ответы')
+    assert summary[start + 4][0] == q['number']['text']
     empty = {'option': [single[2], multiple[2]]}
     assert (await client.get(f'{base}/results', params=empty)).json()['responses'] == 0
     sheet = load_workbook(BytesIO((await client.get(f'{base}/export.xlsx', params=empty)).content))['Ответы']

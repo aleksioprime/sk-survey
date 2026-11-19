@@ -199,8 +199,16 @@ const format = (value) => (value == null ? '-' : Number(value).toLocaleString('r
             </span>
           </p>
           <h2 class="mt-1 font-semibold">{{ q.text }}</h2>
+          <p v-if="q.hidden_options_count" class="mt-2 text-sm text-ink-muted">
+            Остальные варианты скрыты фильтром.
+          </p>
 
-          <ChoiceBreakdown v-if="q.comparison" :breakdown="q.comparison" :answered="q.answered" />
+          <ChoiceBreakdown
+            v-if="q.comparison"
+            :breakdown="q.comparison"
+            :answered="q.answered"
+            :show-empty-options="q.hidden_options_count > 0"
+          />
           <p v-if="q.question_type === 'matrix_multiple'" class="mt-2 text-sm text-ink-muted">
             В каждой строке можно было выбрать несколько вариантов.
           </p>

@@ -16,7 +16,7 @@ vi.mock('@/api/surveys', async (importOriginal) => ({
 const answer = { publishing_id: '5', id: '9007199254740993', number: 1, submitted: true, answers: [] }
 const list = (items) => ({ items, responses: items.length, in_progress: 0, page: 1, page_size: 20 })
 
-async function openResults(canEdit) {
+async function openResults(canEdit, query = '?view=responses') {
   vi.mocked(api.getReportOptions).mockResolvedValue({
     publications: [{ id: '5', title: 'Весна' }, { id: '8', title: 'Осень' }],
     questions: [{
@@ -30,7 +30,7 @@ async function openResults(canEdit) {
     history: createMemoryHistory(),
     routes: [{ path: '/publishings/:id', name: 'publishing', component: PublishingResultsView }],
   })
-  await router.push('/publishings/5?view=responses')
+  await router.push(`/publishings/5${query}`)
   const wrapper = mount(PublishingResultsView, {
     props: { id: '5' },
     global: { plugins: [router], stubs: { Teleport: true, UiBreadcrumbs: true } },
@@ -116,6 +116,39 @@ it('применяет выбор публикаций и вариантов к 
     await button(panel, 'Сбросить').trigger('click')
     await flushPromises()
     expect(api.getResults).toHaveBeenLastCalledWith('5', false, { publications: [], options: [] })
+  } finally {
+    wrapper.unmount()
+  }
+})
+
+it('показывает пометку о скрытых вариантах только у вопроса с фильтром', async () => {
+  const choice = { question_type: 'single_choice', answered: 2, skipped: 0, is_active: true, matrix_rows: [], ranking: [], texts: [] }
+  vi.mocked(api.getResults).mockResolvedValue({
+    responses: 2,
+    in_progress: 0,
+    questions: [
+      {
+        ...choice, question_id: 9, text: 'Подразделение', hidden_options_count: 18, options: [],
+        comparison: {
+          base: 0,
+          options: [{ id: 109, title: 'Отдел №19', count: 0, percent: 0 }],
+          excluded: [{ id: 101, title: 'Отдел №11', count: 2, percent: 100 }],
+        },
+      },
+      {
+        ...choice, question_id: 10, text: 'Понравилось?',
+        options: [{ id: 62, title: 'Да', count: 2, percent: 100 }, { id: 63, title: 'Нет', count: 0, percent: 0 }],
+      },
+    ],
+  })
+  const wrapper = await openResults(false, '?option=101&option=109')
+  try {
+    const note = wrapper.findAll('p').filter((p) => p.text() === 'Остальные варианты скрыты фильтром.')
+    expect(note).toHaveLength(1)
+    expect(note[0].element.parentElement.textContent).toContain('Подразделение')
+    expect(wrapper.text()).toContain('Отдел №11')
+    expect(wrapper.text()).toContain('Отдел №19')
+    expect(wrapper.findAll('span').map((item) => item.text())).toContain('Нет')
   } finally {
     wrapper.unmount()
   }

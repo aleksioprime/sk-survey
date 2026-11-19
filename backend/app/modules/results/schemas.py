@@ -56,6 +56,7 @@ class QuestionResult(BaseModel):
     is_required: bool
     answered: int
     skipped: int
+    hidden_options_count: int = 0
     options: list[OptionStat] = []
     comparison: ChoiceBreakdown | None = None
     matrix_rows: list[MatrixRowResult] = []

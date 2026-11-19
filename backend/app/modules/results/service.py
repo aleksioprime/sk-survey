@@ -122,10 +122,16 @@ def summarize(data: Dataset) -> PublishingResults:
                 else [a.option_ids for a in given if a.option_ids]
             )
             result.answered = len(selections)
-            breakdown = _choice_breakdown(question, selections)
-            result.options = breakdown.options
+            selected_options = data.selection.options.get(question.id)
+            breakdown = _choice_breakdown(question, selections, selected_options)
             if breakdown.excluded:
                 result.comparison = breakdown
+            if selected_options:
+                option_count = len(breakdown.options) + len(breakdown.excluded)
+                breakdown.options = [o for o in breakdown.options if o.id in selected_options]
+                breakdown.excluded = [o for o in breakdown.excluded if o.id in selected_options]
+                result.hidden_options_count = option_count - len(breakdown.options) - len(breakdown.excluded)
+            result.options = breakdown.options
         elif kind in MATRIX_TYPES:
             result.answered = sum(bool(a.matrix_choices) for a in given)
             for row in question.matrix_rows:
@@ -180,13 +186,15 @@ def summarize(data: Dataset) -> PublishingResults:
     )
 
 
-def _choice_breakdown(question: Question, selections: list[list[int]]) -> ChoiceBreakdown:
+def _choice_breakdown(
+    question: Question, selections: list[list[int]], selected_options: set[int] | None = None
+) -> ChoiceBreakdown:
     excluded = {o.id for o in question.options if o.exclude_from_base}
     counts = Counter(option_id for selected in selections for option_id in selected)
     result = ChoiceBreakdown(base=sum(bool(set(selected) - excluded) for selected in selections))
     for option in question.options:
         count = counts[option.id]
-        if not option.is_active and not count:
+        if not option.is_active and not count and option.id not in (selected_options or ()):
             continue
         separate = option.id in excluded
         denominator = len(selections) if separate else result.base
@@ -411,8 +419,10 @@ def export_xlsx(data: Dataset) -> bytes:
         summary.append([xml_text(result.text)])
         summary.cell(summary.max_row, 1).font = Font(bold=True)
         summary.cell(summary.max_row, 7, 'Обязательный' if result.is_required else 'Необязательный')
+        if result.hidden_options_count:
+            summary.append(['', 'Остальные варианты скрыты фильтром.'])
         if result.comparison:
-            _export_choices(summary, result.comparison, result.answered)
+            _export_choices(summary, result.comparison, result.answered, has_comparison=True)
         else:
             for option in result.options:
                 summary.append(['', xml_text(option.title), option.count, option.percent])
@@ -433,10 +443,10 @@ def export_xlsx(data: Dataset) -> bytes:
     return buffer.getvalue()
 
 
-def _export_choices(sheet, breakdown: ChoiceBreakdown, answered: int) -> None:
+def _export_choices(sheet, breakdown: ChoiceBreakdown, answered: int, *, has_comparison: bool = False) -> None:
+    summary_base = 'Сравнимые ответы' if has_comparison or breakdown.excluded else 'Ответившие'
     for option in breakdown.options:
         percent = option.percent if breakdown.base else None
-        summary_base = 'Сравнимые ответы' if breakdown.excluded else 'Ответившие'
         sheet.append(['', xml_text(option.title), option.count, percent, breakdown.base, summary_base])
     for option in breakdown.excluded:
         sheet.append(
