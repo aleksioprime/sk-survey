@@ -174,12 +174,22 @@ async def test_date_and_short_text_from_survey_to_export(db, client):
         assert (await guest.post(f'{current}/submit', headers=headers)).status_code == 200
 
     results = (await client.get(f'{url}/results')).json()
-    assert [q['texts'][0]['text'] for q in results['questions']] == [valid, 'Учитель']
+    displayed_date = '29.02.2024'
+    assert [q['texts'][0]['text'] for q in results['questions']] == [displayed_date, 'Учитель']
     responses = (await client.get(f'{url}/responses')).json()
-    assert [a['text'] for a in responses['items'][0]['answers']] == [valid, 'Учитель']
+    (item,) = responses['items']
+    assert [a['text'] for a in item['answers']] == [displayed_date, 'Учитель']
     export = await client.get(f'{url}/export.xlsx')
     book = load_workbook(BytesIO(export.content))
-    assert list(book['Ответы'].values)[1][1:3] == (date(2024, 2, 29), 'Учитель')
+    sheet = book['Ответы']
+    assert sheet['B2'].value == date(2024, 2, 29)
+    assert sheet['B2'].number_format == 'dd.mm.yyyy'
+    assert sheet['C2'].value == 'Учитель'
+    assert sheet['D2'].number_format == sheet['E2'].number_format == 'dd.mm.yyyy hh:mm:ss'
+
+    export = await client.get(f'{url}/responses/{item["id"]}/export.docx')
+    document = Document(BytesIO(export.content))
+    assert displayed_date in [p.text for p in document.paragraphs]
 
 
 async def test_individual_responses(db, client, monkeypatch):

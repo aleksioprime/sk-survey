@@ -262,7 +262,8 @@ def answer_text(question: Question, answer: Answer | None, scale: Scale | None, 
     if kind in ('text', 'short_text'):
         return answer.text_value or ''
     if kind == 'date':
-        return answer.date_value.isoformat() if answer.date_value else ''
+        value = answer.date_value
+        return f'{value.day:02d}.{value.month:02d}.{value.year:04d}' if value else ''
     if kind == TEXT_LIST:
         return '\n'.join(answer.text_rows)
     if kind == 'rich_text':
