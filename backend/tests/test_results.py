@@ -80,8 +80,9 @@ async def test_export_xlsx(db, client):
     sheet = book['Ответы']
     assert sheet['B2'].data_type == 's' and sheet['B2'].alignment.wrap_text
     assert sheet.column_dimensions['A'].width < sheet.column_dimensions['B'].width <= 64
-    assert sheet.row_dimensions[2].height > sheet.row_dimensions[3].height
+    assert sheet['B3'].alignment.wrap_text
     assert book['Сводка']['A1'].alignment.wrap_text
+    assert all(not row.customHeight for worksheet in book for row in worksheet.row_dimensions.values())
     assert book['Сводка'].column_dimensions['A'].width > book['Сводка'].column_dimensions['D'].width
     assert rows[0][-2:] == ('Начало попытки (МСК)', 'Отправлен (МСК)')
     assert isinstance(rows[1][-2], datetime) and rows[1][-2] <= rows[1][-1]
