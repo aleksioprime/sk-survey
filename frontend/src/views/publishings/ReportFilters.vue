@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
-import { UiButton } from 'sk-ui'
+import { UiButton, UiSelect } from 'sk-ui'
 
 const props = defineProps({
   publishingId: { type: String, required: true },
@@ -72,13 +72,13 @@ function reset() {
           </div>
           <UiButton size="sm" variant="ghost" :aria-label="`Убрать фильтр: ${q.text}`" @click="delete filters[q.id]">Убрать фильтр</UiButton>
         </fieldset>
-        <label v-if="adding" class="grid gap-1 text-sm">
-          Вопрос для фильтра
-          <select class="w-full rounded-control border border-line bg-surface p-2" @change="add($event.target.value)">
-            <option value="">Выберите вопрос</option>
+        <div v-if="adding" class="grid gap-1 text-sm">
+          <label for="report-filter-question">Вопрос для фильтра</label>
+          <UiSelect id="report-filter-question" class="w-full" :model-value="null" @update:model-value="add">
+            <option :value="null" disabled>Выберите вопрос</option>
             <option v-for="q in availableQuestions" :key="q.id" :value="q.id">{{ q.text }}</option>
-          </select>
-        </label>
+          </UiSelect>
+        </div>
         <div v-else-if="availableQuestions.length">
           <UiButton size="sm" @click="adding = true">Добавить фильтр</UiButton>
         </div>
