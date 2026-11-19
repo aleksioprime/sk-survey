@@ -195,6 +195,7 @@ async def test_individual_responses(db, client, monkeypatch):
     answer = page['items'][0]
     assert set(answer) == {
         'id',
+        'publishing_id',
         'number',
         'submitted',
         'started_at',
@@ -281,3 +282,72 @@ async def _person_id(db, email):
     from sqlalchemy import select
 
     return await db.scalar(select(User.person_id).where(User.email == email))
+
+
+async def test_combined_filtered_report(db, client, monkeypatch):
+    user = await login_employee(db, client)
+    built = await build_survey(client)
+    publication = built['publishing']
+    named = (
+        await client.post(
+            f'/api/v1/surveys/{built["survey"]["id"]}/publishings', json={'title': 'Осень', 'is_anonymous': False}
+        )
+    ).json()
+    base = f'/api/v1/publishings/{publication["id"]}'
+    q = built['questions']
+    single = [o['id'] for o in q['single_choice']['options']]
+    multiple = [o['id'] for o in q['multiple_choice']['options']]
+    await _answer(
+        client,
+        {**built, 'publishing': named},
+        {'single_choice': {'option_id': single[1]}, 'scale': {'number_value': 2}},
+    )
+    async with other_client(client) as guest:
+        await _answer(guest, built)
+        await _answer(guest, built, {'multiple_choice': {'option_ids': [multiple[2]]}})
+        await _answer(guest, built, {'single_choice': {'option_id': single[2]}})
+        await _answer(guest, built, submit=False)
+
+    catalog = (await client.get(f'{base}/report-options')).json()
+    assert {p['id'] for p in catalog['publications']} == {str(publication['id']), str(named['id'])}
+    assert {i['id'] for i in catalog['questions']} == {str(q[k]['id']) for k in ('single_choice', 'multiple_choice')}
+    params = {'publication': [named['id'], named['id']], 'option': [*single[:2], *multiple[:2]]}
+    result = (await client.get(f'{base}/results', params=params)).json()
+    assert result['responses'] == 2 and result['in_progress'] == 0
+    assert next(i for i in result['questions'] if i['question_type'] == 'scale')['mean'] == 5
+    assert (await client.get(f'{base}/results', params={'publication': named['id']})).json()['responses'] == 4
+    drafts = (await client.get(f'{base}/responses', params={**params, 'include_in_progress': True})).json()
+    assert drafts['responses'] == 2 and drafts['in_progress'] == 1
+    assert [i['respondent'] for i in drafts['items']] == [user.person.full_name, None, None]
+    assert drafts['items'][0]['publishing_id'] == str(named['id'])
+    monkeypatch.setattr(service, 'RESPONSES_PER_PAGE', 1)
+    last_page = (await client.get(f'{base}/responses', params={**params, 'page': 20})).json()
+    assert (last_page['page'], last_page['responses']) == (2, 2)
+    assert [item['id'] for item in last_page['items']] == [drafts['items'][1]['id']]
+
+    book = load_workbook(BytesIO((await client.get(f'{base}/export.xlsx', params=params)).content))
+    header, personal, anonymous = list(book['Ответы'].values)
+    assert header[:2] == ('№', 'Публикация')
+    assert personal[1] == 'Осень' and personal[header.index('ФИО')] == user.person.full_name
+    assert anonymous[1] == publication['title'] and anonymous[header.index('Email')] is None
+    assert any(row[1:3] == ('Среднее', 5) for row in book['Сводка'].values)
+    empty = {'option': [single[2], multiple[2]]}
+    assert (await client.get(f'{base}/results', params=empty)).json()['responses'] == 0
+    sheet = load_workbook(BytesIO((await client.get(f'{base}/export.xlsx', params=empty)).content))['Ответы']
+    assert sheet.max_row == 1
+
+    other = await build_survey(client)
+    for route in ('results', 'responses', 'export.xlsx'):
+        assert (
+            await client.get(f'{base}/{route}', params={'publication': other['publishing']['id']})
+        ).status_code == 404
+        assert (
+            await client.get(f'{base}/{route}', params={'option': q['ranking']['options'][0]['id']})
+        ).status_code == 422
+    async with other_client(client) as observer:
+        reader = await login_employee(db, observer, email='report-observer@skolkovo.example.org')
+        await client.patch(base, json={'observer_person_ids': [reader.person_id]})
+        visible = (await observer.get(f'{base}/report-options')).json()['publications']
+        assert [p['id'] for p in visible] == [str(publication['id'])]
+        for route in ('results', 'responses', 'export.xlsx'):
+            assert (await observer.get(f'{base}/{route}', params=params)).status_code == 404

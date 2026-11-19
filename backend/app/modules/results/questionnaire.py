@@ -53,7 +53,7 @@ def _document():
 
 def export_docx(data: Dataset) -> bytes:
     (response,) = data.responses
-    publishing = data.publishing
+    publishing = data.selection.publishing
     survey = publishing.survey
     doc = _document()
     doc.add_paragraph(xml_text(survey.title), 'Title')

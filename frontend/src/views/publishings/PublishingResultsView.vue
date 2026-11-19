@@ -1,18 +1,38 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { errorMessage, SkeletonPage, UiBadge, UiBreadcrumbs, UiButton, UiCard, UiConfirm, UiSwitch, useUrlQuery } from 'sk-ui'
-import { deleteIndividualResponse, exportUrl, getIndividualResponses, getPublishing, getResults } from '@/api/surveys'
+import { deleteIndividualResponse, exportUrl, getIndividualResponses, getPublishing, getReportOptions, getResults } from '@/api/surveys'
 import SurveyArchiveBadge from '@/components/SurveyArchiveBadge.vue'
 import QuestionTypeIcon from '@/components/questions/QuestionTypeIcon.vue'
 import ChoiceBreakdown from '@/components/questions/ChoiceBreakdown.vue'
 import { QUESTION_TYPES } from '@/utils/questionTypes'
 import PublishingResponseList from './PublishingResponseList.vue'
+import ReportFilters from './ReportFilters.vue'
 
 const props = defineProps({ id: { type: String, required: true } })
 
 const publishing = ref(null)
 const results = ref(null)
 const { route, setQuery } = useUrlQuery()
+const router = useRouter()
+const catalog = ref(null)
+const queryIds = (value) => [...new Set([value].flat().filter(Boolean))]
+const selection = computed(() => ({
+  publications: queryIds(route.query.publication).filter((id) => id !== props.id),
+  options: queryIds(route.query.option),
+}))
+const combined = computed(() => selection.value.publications.length > 0)
+const publicationNames = computed(() => Object.fromEntries((catalog.value?.publications || []).map((p) => [p.id, p.title])))
+const reportTitles = computed(() => [props.id, ...selection.value.publications].map((id) => publicationNames.value[id]).filter(Boolean))
+const filtered = computed(() => selection.value.options.length > 0)
+function applySelection({ publications, options }) {
+  const id = publications.includes(props.id) ? props.id : publications[0]
+  const extra = publications.filter((p) => p !== id)
+  const query = { publication: extra.length ? extra : undefined, option: options.length ? options : undefined, page: undefined }
+  if (id === props.id) setQuery(query)
+  else router.push({ name: 'publishing', params: { id }, query: { ...route.query, ...query } })
+}
 const includeInProgress = computed({
   get: () => route.query.drafts === '1',
   set: (value) => setQuery({ drafts: value ? '1' : undefined, page: undefined }),
@@ -50,7 +70,7 @@ async function removeResponse() {
   deleting.value = true
   deleteError.value = ''
   try {
-    await deleteIndividualResponse(props.id, removing.value.id)
+    await deleteIndividualResponse(removing.value.publishing_id, removing.value.id)
     removing.value = null
     await load()
   } catch (e) {
@@ -67,12 +87,9 @@ async function load() {
   results.value = null
   try {
     const result = showResponses.value
-      ? await getIndividualResponses(props.id, includeInProgress.value, responsePage.value)
-      : await getResults(props.id, includeInProgress.value)
-    if (request === lastLoad) {
-      results.value = result
-      publishing.value.submitted_count = result.responses
-    }
+      ? await getIndividualResponses(props.id, includeInProgress.value, responsePage.value, selection.value)
+      : await getResults(props.id, includeInProgress.value, selection.value)
+    if (request === lastLoad) results.value = result
   } catch (e) {
     if (request === lastLoad) error.value = errorMessage(e)
   }
@@ -80,14 +97,16 @@ async function load() {
 
 onMounted(async () => {
   try {
-    publishing.value = await getPublishing(props.id)
+    const [info, options] = await Promise.all([getPublishing(props.id), getReportOptions(props.id)])
+    publishing.value = info
+    catalog.value = options
   } catch (e) {
     error.value = errorMessage(e)
     return
   }
   await load()
 })
-watch([includeInProgress, showResponses, responsePage], () => { if (publishing.value) load() })
+watch([includeInProgress, showResponses, responsePage, selection], () => { if (publishing.value) load() })
 
 const total = computed(() => (results.value ? results.value.responses + (includeInProgress.value ? results.value.in_progress : 0) : 0))
 const maxCount = (items) => Math.max(1, ...items.map((i) => i.count))
@@ -107,23 +126,32 @@ const format = (value) => (value == null ? '-' : Number(value).toLocaleString('r
             {{ publishing.survey_title }}
             <SurveyArchiveBadge :active="publishing.survey_is_active" />
           </div>
-          <h1 class="text-2xl font-bold wrap-anywhere">{{ publishing.title }}</h1>
+          <h1 class="text-2xl font-bold wrap-anywhere">{{ combined ? 'Общая статистика' : publishing.title }}</h1>
+          <p v-if="combined" class="mt-1 text-sm text-ink-muted wrap-anywhere">{{ reportTitles.join(' · ') }}</p>
           <p class="mt-2 flex flex-wrap gap-2">
-            <UiBadge tone="brand">Ответов: {{ results?.responses ?? publishing.submitted_count }}</UiBadge>
+            <UiBadge v-if="results" tone="brand">Ответов: {{ results.responses }}</UiBadge>
             <UiBadge v-if="results?.in_progress">Не отправлено: {{ results.in_progress }}</UiBadge>
-            <UiBadge>{{ publishing.is_anonymous ? 'Анонимно' : 'С именами' }}</UiBadge>
+            <UiBadge v-if="!combined">{{ publishing.is_anonymous ? 'Анонимно' : 'С именами' }}</UiBadge>
           </p>
         </div>
         <div class="flex flex-wrap items-center gap-3">
           <UiSwitch v-model="includeInProgress" label="Учитывать неотправленные" />
           <a
-            :href="exportUrl(props.id, includeInProgress)"
+            :href="exportUrl(props.id, includeInProgress, selection)"
             class="inline-flex h-10 items-center rounded-control bg-brand-600 px-4 font-medium text-white hover:bg-brand-700"
           >
             Скачать Excel
           </a>
         </div>
       </div>
+
+      <ReportFilters
+        v-if="catalog && (catalog.publications.length > 1 || catalog.questions.length || filtered || combined)"
+        :publishing-id="props.id"
+        :catalog="catalog"
+        :selection="selection"
+        @apply="applySelection"
+      />
 
       <div role="group" aria-label="Вид отчёта" class="mt-5 flex flex-wrap gap-2">
         <UiButton :variant="showResponses ? 'secondary' : 'primary'" :aria-pressed="!showResponses" @click="setQuery({ view: undefined, page: undefined })">
@@ -152,13 +180,14 @@ const format = (value) => (value == null ? '-' : Number(value).toLocaleString('r
       <PublishingResponseList
         v-else-if="results && showResponses"
         :key="results.page"
-        :publishing-id="props.id"
+        :publication-names="combined ? publicationNames : {}"
+        :filtered="filtered"
         :responses="results"
         :can-edit="publishing.can_edit"
         @page="setQuery({ page: $event === 1 ? undefined : $event })"
         @remove="confirmRemoval"
       />
-      <p v-else-if="results && !total" class="mt-10 text-center text-ink-muted">Ответов пока нет.</p>
+      <p v-else-if="results && !total" class="mt-10 text-center text-ink-muted">{{ filtered ? 'По выбранным условиям ответов нет.' : 'Ответов пока нет.' }}</p>
 
       <div v-else-if="results" class="mt-6 grid gap-4">
         <UiCard v-for="(q, index) in results.questions" :key="q.question_id">

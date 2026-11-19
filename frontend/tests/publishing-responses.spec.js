@@ -9,18 +9,23 @@ vi.mock('@/api/surveys', async (importOriginal) => ({
   deleteIndividualResponse: vi.fn(),
   getIndividualResponses: vi.fn(),
   getPublishing: vi.fn(),
-  exportUrl: vi.fn(),
+  getResults: vi.fn(),
+  getReportOptions: vi.fn(),
 }))
 
-const answer = { id: '9007199254740993', number: 1, submitted: true, answers: [] }
+const answer = { publishing_id: '5', id: '9007199254740993', number: 1, submitted: true, answers: [] }
 const list = (items) => ({ items, responses: items.length, in_progress: 0, page: 1, page_size: 20 })
 
 async function openResults(canEdit) {
+  vi.mocked(api.getReportOptions).mockResolvedValue({
+    publications: [{ id: '5', title: 'Весна' }, { id: '8', title: 'Осень' }],
+    questions: [{ id: '9', text: 'Класс', options: [{ id: '91', title: 'Десятый' }, { id: '92', title: 'Девятый' }] }],
+  })
   vi.mocked(api.getPublishing).mockResolvedValue({ can_edit: canEdit, submitted_count: 1 })
   vi.mocked(api.getIndividualResponses).mockResolvedValue(list([answer]))
   const router = createRouter({
     history: createMemoryHistory(),
-    routes: [{ path: '/publishings/:id', component: PublishingResultsView }],
+    routes: [{ path: '/publishings/:id', name: 'publishing', component: PublishingResultsView }],
   })
   await router.push('/publishings/5?view=responses')
   const wrapper = mount(PublishingResultsView, {
@@ -70,4 +75,52 @@ describe('удаление ответа в результатах', () => {
       wrapper.unmount()
     }
   })
+})
+
+it('применяет выбор публикаций и вариантов к списку, сводке и Excel', async () => {
+  const wrapper = await openResults(false)
+  try {
+    const panel = wrapper.get('form')
+    await panel.get('input[value="8"]').setValue(true)
+    await button(panel, 'Добавить фильтр').trigger('click')
+    await panel.get('select').setValue('9')
+    await panel.get('input[value="91"]').setValue(true)
+    vi.mocked(api.getIndividualResponses).mockResolvedValue(list([{ ...answer, publishing_id: '8' }]))
+    await panel.trigger('submit')
+    await flushPromises()
+    const selection = { publications: ['8'], options: ['91'] }
+    expect(api.getIndividualResponses).toHaveBeenLastCalledWith('5', false, 1, selection)
+    expect(wrapper.get('h1').text()).toBe('Общая статистика')
+    expect(wrapper.get('a[href$=".docx"]').attributes('href')).toContain('/publishings/8/')
+    expect(wrapper.get('a[href*="export.xlsx"]').attributes('href')).toContain('publication=8&option=91')
+    expect(wrapper.text()).toContain('Класс: Десятый')
+    vi.mocked(api.getResults).mockResolvedValue({ responses: 0, in_progress: 0, questions: [] })
+    await button(wrapper, 'Сводка').trigger('click')
+    await flushPromises()
+    expect(api.getResults).toHaveBeenLastCalledWith('5', false, selection)
+    expect(wrapper.text()).toContain('По выбранным условиям ответов нет.')
+    await button(panel, 'Сбросить').trigger('click')
+    await flushPromises()
+    expect(api.getResults).toHaveBeenLastCalledWith('5', false, { publications: [], options: [] })
+  } finally {
+    wrapper.unmount()
+  }
+})
+
+
+it('позволяет исключить исходную публикацию из отчёта', async () => {
+  const wrapper = await openResults(false)
+  try {
+    const panel = wrapper.get('form')
+    await panel.get('input[value="5"]').setValue(false)
+    expect(button(panel, 'Применить').element.disabled).toBe(true)
+    await panel.get('input[value="8"]').setValue(true)
+    await panel.trigger('submit')
+    await flushPromises()
+    expect(wrapper.vm.$route.path).toBe('/publishings/8')
+    expect(wrapper.vm.$route.query.view).toBe('responses')
+    expect(wrapper.vm.$route.query.publication).toBeUndefined()
+  } finally {
+    wrapper.unmount()
+  }
 })

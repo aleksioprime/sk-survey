@@ -8,7 +8,15 @@ from sk_common.deps import CurrentUser, Db
 
 from app.modules.results import service
 from app.modules.results.questionnaire import export_docx
-from app.modules.results.schemas import IndividualResponses, PublishingResults
+from app.modules.results.schemas import (
+    FilterQuestion,
+    IndividualResponses,
+    PublishingResults,
+    ReportOption,
+    ReportOptions,
+)
+from app.modules.results.selection import CHOICE, Selection, available_publishings
+from app.modules.surveys.models import Publishing
 from app.modules.surveys.permissions import viewable_publishing
 
 router = APIRouter(prefix='/v1/publishings', tags=['results'])
@@ -17,20 +25,33 @@ DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
 
+@router.get('/{publishing_id}/report-options', summary='Публикации и фильтры отчёта')
+async def report_options(publishing_id: int, db: Db, user: CurrentUser) -> ReportOptions:
+    publishing, can_edit = await viewable_publishing(db, publishing_id, user)
+    query = available_publishings(publishing, can_edit, user).with_only_columns(Publishing.id, Publishing.title)
+    publications = await db.execute(query.order_by(Publishing.created_at.desc(), Publishing.id))
+    return ReportOptions(
+        publications=[ReportOption(id=str(pid), title=title) for pid, title in publications],
+        questions=[
+            FilterQuestion(
+                id=str(q.id), text=q.text, options=[ReportOption(id=str(o.id), title=o.title) for o in q.options]
+            )
+            for q in publishing.survey.questions
+            if q.question_type in CHOICE and q.options
+        ],
+    )
+
+
 @router.get('/{publishing_id}/results', response_model=PublishingResults, summary='Сводка по вопросам')
-async def results(
-    publishing_id: int, db: Db, user: CurrentUser, include_in_progress: bool = False
-) -> PublishingResults:
-    publishing, _ = await viewable_publishing(db, publishing_id, user)
-    return service.summarize(await service.load(db, publishing, include_in_progress))
+async def results(selection: Selection, db: Db, include_in_progress: bool = False) -> PublishingResults:
+    return service.summarize(await service.load(db, selection, include_in_progress))
 
 
 @router.get('/{publishing_id}/responses', response_model=IndividualResponses, summary='Отдельные ответы')
 async def individual_responses(
-    publishing_id: int, db: Db, user: CurrentUser, include_in_progress: bool = False, page: int = Query(1, ge=1)
+    selection: Selection, db: Db, include_in_progress: bool = False, page: int = Query(1, ge=1)
 ) -> IndividualResponses:
-    publishing, _ = await viewable_publishing(db, publishing_id, user)
-    return await service.individual_responses(db, publishing, include_in_progress, page)
+    return await service.individual_responses(db, selection, include_in_progress, page)
 
 
 @router.get('/{publishing_id}/responses/{response_id}/export.docx', summary='Анкета участника в Word')
@@ -70,12 +91,19 @@ async def delete_response(
 
 
 @router.get('/{publishing_id}/export.xlsx', summary='Ответы в Excel')
-async def export(publishing_id: int, db: Db, user: CurrentUser, include_in_progress: bool = False) -> Response:
-    publishing, _ = await viewable_publishing(db, publishing_id, user)
-    content = service.export_xlsx(await service.load(db, publishing, include_in_progress))
-    record(db, 'publishing.export', 'publishing', publishing.id, user.id)
+async def export(selection: Selection, db: Db, user: CurrentUser, include_in_progress: bool = False) -> Response:
+    content = service.export_xlsx(await service.load(db, selection, include_in_progress))
+    record(
+        db,
+        'publishing.export',
+        'publishing',
+        selection.publishing.id,
+        user.id,
+        publication_ids=list(selection.publications),
+    )
     await db.commit()
-    filename = quote(f'{publishing.title[:80]}.xlsx')
+    suffix = ' - по фильтрам' if selection.options else ''
+    filename = quote(f'{selection.title[:80]}{suffix}.xlsx', safe='')
     return Response(
         content, media_type=XLSX, headers={'Content-Disposition': f"attachment; filename*=UTF-8''{filename}"}
     )

@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
+import CombinedResultsLink from './CombinedResultsLink.vue'
 import { errorMessage, SkeletonPage, UiBadge, UiButton, UiCard, UiCopyField, UiDialog, UiInput, UiSwitch } from 'sk-ui'
 import * as api from '@/api/surveys'
 import SurveyArchiveBadge from '@/components/SurveyArchiveBadge.vue'
@@ -145,7 +146,10 @@ const canPublish = computed(() => survey.value.questions.some(
         <p class="max-w-xl text-sm text-ink-muted">
           Публикация - это ссылка на опрос для конкретной группы и периода. Ответы и результаты собираются по публикации.
         </p>
-        <UiButton variant="primary" :disabled="!canPublish || publishingSaving" @click="newPublishing">Новая публикация</UiButton>
+        <div class="flex flex-wrap items-center gap-2">
+          <CombinedResultsLink :publishings="publishings" />
+          <UiButton variant="primary" :disabled="!canPublish || publishingSaving" @click="newPublishing">Новая публикация</UiButton>
+        </div>
       </div>
       <UiCard
         v-for="p in publishings"

@@ -88,6 +88,7 @@ class IndividualAnswer(BaseModel):
 
 class IndividualResponse(BaseModel):
     id: str
+    publishing_id: str
     number: int
     submitted: bool
     started_at: datetime
@@ -103,3 +104,19 @@ class IndividualResponses(BaseModel):
     responses: int
     in_progress: int
     items: list[IndividualResponse]
+
+
+class ReportOption(BaseModel):
+    id: str
+    title: str
+
+
+class FilterQuestion(BaseModel):
+    id: str
+    text: str
+    options: list[ReportOption]
+
+
+class ReportOptions(BaseModel):
+    publications: list[ReportOption]
+    questions: list[FilterQuestion]

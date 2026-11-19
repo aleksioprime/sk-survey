@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { UiBadge, UiButton } from 'sk-ui'
 import { responseWordUrl } from '@/api/surveys'
 
-const props = defineProps({ publishingId: { type: String, required: true }, responses: { type: Object, required: true }, canEdit: Boolean })
+const props = defineProps({ publicationNames: { type: Object, required: true }, filtered: Boolean, responses: { type: Object, required: true }, canEdit: Boolean })
 const emit = defineEmits(['page', 'remove'])
 const pageCount = computed(() => Math.ceil((props.responses.responses + props.responses.in_progress) / props.responses.page_size))
 const attemptTime = new Intl.DateTimeFormat('ru-RU', {
@@ -14,7 +14,7 @@ const attemptTime = new Intl.DateTimeFormat('ru-RU', {
 </script>
 
 <template>
-  <p v-if="!responses.items.length" class="mt-10 text-center text-ink-muted">Ответов пока нет.</p>
+  <p v-if="!responses.items.length" class="mt-10 text-center text-ink-muted">{{ filtered ? 'По выбранным условиям ответов нет.' : 'Ответов пока нет.' }}</p>
   <div v-else class="mt-6 grid gap-3">
     <details v-for="item in responses.items" :key="item.id" class="group min-w-0 rounded-card border border-line bg-surface">
       <summary class="flex min-h-12 cursor-pointer list-none flex-wrap items-center justify-between gap-2 rounded-card px-4 py-3 hover:bg-brand-50">
@@ -25,6 +25,7 @@ const attemptTime = new Intl.DateTimeFormat('ru-RU', {
             <UiBadge v-if="!item.submitted" tone="warning">Не отправлен</UiBadge>
           </span>
           <span class="flex flex-wrap gap-x-3 text-xs text-ink-muted">
+            <span v-if="publicationNames[item.publishing_id]">{{ publicationNames[item.publishing_id] }}</span>
             <span v-if="item.started_at">Начат <time :datetime="item.started_at">{{ attemptTime.format(new Date(item.started_at)) }}</time> МСК</span>
             <span v-if="item.submitted_at">Отправлен <time :datetime="item.submitted_at">{{ attemptTime.format(new Date(item.submitted_at)) }}</time> МСК</span>
           </span>
@@ -43,7 +44,7 @@ const attemptTime = new Intl.DateTimeFormat('ru-RU', {
       </dl>
       <p v-else class="border-t border-line px-4 py-4 text-sm text-ink-muted">В этом прохождении пока нет ответов.</p>
       <div class="flex flex-wrap items-center justify-end gap-3 px-4 pb-4">
-        <a :href="responseWordUrl(publishingId, item.id)" class="rounded-control px-2 py-1 text-sm font-medium text-brand-700 hover:underline">
+        <a :href="responseWordUrl(item.publishing_id, item.id)" class="rounded-control px-2 py-1 text-sm font-medium text-brand-700 hover:underline">
           Скачать анкету в Word
         </a>
         <UiButton v-if="canEdit" size="sm" variant="ghost" class="text-red-700" @click="emit('remove', item)">Удалить ответ</UiButton>

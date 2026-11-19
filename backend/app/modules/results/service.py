@@ -30,9 +30,9 @@ from app.modules.results.schemas import (
     RankingStat,
     TextAnswer,
 )
+from app.modules.results.selection import CHOICE, ReportSelection
 from app.modules.surveys.models import MATRIX_TYPES, SCALE_GENERATED, TEXT_LIST, Publishing, Question, Scale
 
-CHOICE = ('single_choice', 'multiple_choice')
 NUMERIC = ('number', 'scale')
 TEXTS = ('text', 'short_text', 'rich_text', TEXT_LIST, 'date')
 RESPONSES_PER_PAGE = 20
@@ -41,50 +41,52 @@ MOSCOW = ZoneInfo('Europe/Moscow')
 
 @dataclass
 class Dataset:
-    publishing: Publishing
+    selection: ReportSelection
     questions: list[Question]
     responses: list[Response]
     scales: dict[int, Scale]
     users: dict[int, User]
 
-
-def _response_query(publishing: Publishing, include_in_progress: bool):
-    query = select(Response).where(Response.publishing_id == publishing.id)
-    if not include_in_progress:
-        query = query.where(Response.status == STATUS_SUBMITTED)
-    return query
+    def respondent(self, response: Response) -> User | None:
+        if self.selection.publications[response.publishing_id].is_anonymous:
+            return None
+        return self.users.get(response.user_id)
 
 
 def _ordered_responses(query):
     return query.order_by(Response.submitted_at.nulls_last(), Response.created_at, Response.id)
 
 
-async def load(db: AsyncSession, publishing: Publishing, include_in_progress: bool = False) -> Dataset:
-    responses = list(await db.scalars(_ordered_responses(_response_query(publishing, include_in_progress))))
-    return await _load_dataset(db, publishing, responses)
+async def load(db: AsyncSession, selection: ReportSelection, include_in_progress: bool = False) -> Dataset:
+    responses = list(await db.scalars(_ordered_responses(selection.response_query(include_in_progress))))
+    return await _load_dataset(db, selection, responses)
 
 
 async def load_response(db: AsyncSession, publishing: Publishing, response_id: int) -> Dataset | None:
     response = await db.scalar(
         select(Response).where(Response.publishing_id == publishing.id, Response.id == response_id)
     )
-    return await _load_dataset(db, publishing, [response]) if response else None
+    return (
+        await _load_dataset(db, ReportSelection(publishing, {publishing.id: publishing}), [response])
+        if response
+        else None
+    )
 
 
-async def _load_dataset(db: AsyncSession, publishing: Publishing, responses: list[Response]) -> Dataset:
+async def _load_dataset(db: AsyncSession, selection: ReportSelection, responses: list[Response]) -> Dataset:
     answered = {a.question_id for r in responses for a in r.answers}
     questions = [
         q
         for q in await db.scalars(
-            select(Question).where(Question.survey_id == publishing.survey_id).order_by(Question.order)
+            select(Question).where(Question.survey_id == selection.publishing.survey_id).order_by(Question.order)
         )
         if q.is_active or q.id in answered
     ]
     scale_ids = {q.scale_id for q in questions if q.scale_id}
     scales = {s.id: s for s in await db.scalars(select(Scale).where(Scale.id.in_(scale_ids or {0})))}
-    user_ids = {r.user_id for r in responses if r.user_id and not publishing.is_anonymous}
+    user_ids = {r.user_id for r in responses if r.user_id and not selection.publications[r.publishing_id].is_anonymous}
     users = {u.id: u for u in await db.scalars(select(User).where(User.id.in_(user_ids)))} if user_ids else {}
-    return Dataset(publishing, questions, responses, scales, users)
+    return Dataset(selection, questions, responses, scales, users)
 
 
 def _answers(data: Dataset, question: Question) -> list[Answer]:
@@ -168,10 +170,10 @@ def summarize(data: Dataset) -> PublishingResults:
         results.append(result)
     in_progress = sum(1 for r in data.responses if r.status != STATUS_SUBMITTED)
     return PublishingResults(
-        publishing_id=data.publishing.id,
-        title=data.publishing.title,
-        survey_title=data.publishing.survey.title,
-        is_anonymous=data.publishing.is_anonymous,
+        publishing_id=data.selection.publishing.id,
+        title=data.selection.title,
+        survey_title=data.selection.publishing.survey.title,
+        is_anonymous=data.selection.anonymous,
         responses=total - in_progress,
         in_progress=in_progress,
         questions=results,
@@ -302,9 +304,9 @@ def _individual_answer(question: Question, answer: Answer, scale: Scale | None) 
 
 
 async def individual_responses(
-    db: AsyncSession, publishing: Publishing, include_in_progress: bool, page: int
+    db: AsyncSession, selection: ReportSelection, include_in_progress: bool, page: int
 ) -> IndividualResponses:
-    query = _response_query(publishing, include_in_progress)
+    query = selection.response_query(include_in_progress)
     total, submitted = (
         await db.execute(
             query.with_only_columns(func.count(), func.count().filter(Response.status == STATUS_SUBMITTED))
@@ -313,11 +315,11 @@ async def individual_responses(
     page = min(page, max(1, (total + RESPONSES_PER_PAGE - 1) // RESPONSES_PER_PAGE))
     offset = (page - 1) * RESPONSES_PER_PAGE
     responses = list(await db.scalars(_ordered_responses(query).offset(offset).limit(RESPONSES_PER_PAGE)))
-    data = await _load_dataset(db, publishing, responses)
+    data = await _load_dataset(db, selection, responses)
     items = []
     for number, response in enumerate(data.responses, offset + 1):
         by_question = {answer.question_id: answer for answer in response.answers}
-        user = data.users.get(response.user_id)
+        user = data.respondent(response)
         person = user.person if user else None
         answers = [
             _individual_answer(question, by_question[question.id], data.scales.get(question.scale_id))
@@ -327,6 +329,7 @@ async def individual_responses(
         items.append(
             IndividualResponse(
                 id=str(response.id),
+                publishing_id=str(response.publishing_id),
                 number=number,
                 submitted=response.status == STATUS_SUBMITTED,
                 started_at=response.created_at,
@@ -358,8 +361,8 @@ def export_xlsx(data: Dataset) -> bytes:
     book = Workbook(iso_dates=True)
     sheet = book.active
     sheet.title = 'Ответы'
-    personal = not data.publishing.is_anonymous
-    header = ['№']
+    personal = not data.selection.anonymous
+    header = ['№', 'Публикация'] if data.selection.combined else ['№']
     if personal:
         header += ['Отправлен (МСК)', 'ФИО', 'Email', 'Класс']
     for question in data.questions:
@@ -374,8 +377,10 @@ def export_xlsx(data: Dataset) -> bytes:
     for number, response in enumerate(data.responses, 1):
         by_question = {a.question_id: a for a in response.answers}
         row = [number]
+        if data.selection.combined:
+            row.append(data.selection.publications[response.publishing_id].title)
         if personal:
-            user = data.users.get(response.user_id)
+            user = data.respondent(response)
             person = user.person if user else None
             row += [
                 _excel_time(response.submitted_at),

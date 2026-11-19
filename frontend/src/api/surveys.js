@@ -36,13 +36,23 @@ export const getPublishing = (id) => get(`/v1/publishings/${id}`)
 export const updatePublishing = (id, body) => patch(`/v1/publishings/${id}`, body)
 export const deletePublishing = (id) => http.delete(`/v1/publishings/${id}`)
 
-export const getResults = (id, includeInProgress = false) =>
-  get(`/v1/publishings/${id}/results`, { params: { include_in_progress: includeInProgress } })
-export const getIndividualResponses = (id, includeInProgress, page) =>
-  get(`/v1/publishings/${id}/responses`, { params: { include_in_progress: includeInProgress, page } })
+export const getReportOptions = (id) => get(`/v1/publishings/${id}/report-options`)
+
+function reportParams(includeInProgress, selection = {}, page) {
+  const params = new URLSearchParams({ include_in_progress: String(includeInProgress) })
+  for (const id of selection.publications || []) params.append('publication', id)
+  for (const id of selection.options || []) params.append('option', id)
+  if (page) params.set('page', page)
+  return params
+}
+
+export const getResults = (id, includeInProgress = false, selection) =>
+  get(`/v1/publishings/${id}/results`, { params: reportParams(includeInProgress, selection) })
+export const getIndividualResponses = (id, includeInProgress, page, selection) =>
+  get(`/v1/publishings/${id}/responses`, { params: reportParams(includeInProgress, selection, page) })
 export const deleteIndividualResponse = (id, responseId) => http.delete(`/v1/publishings/${id}/responses/${responseId}`)
 export const responseWordUrl = (id, responseId) => `/api/v1/publishings/${id}/responses/${responseId}/export.docx`
-export const exportUrl = (id, includeInProgress = false) =>
-  `/api/v1/publishings/${id}/export.xlsx?include_in_progress=${includeInProgress}`
+export const exportUrl = (id, includeInProgress = false, selection) =>
+  `/api/v1/publishings/${id}/export.xlsx?${reportParams(includeInProgress, selection)}`
 
 export const searchEmployees = (q, surveyId) => get('/v1/directory/employees', { params: { q, survey_id: surveyId } })
