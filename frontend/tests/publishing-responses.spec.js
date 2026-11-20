@@ -7,6 +7,8 @@ import PublishingResultsView from '@/views/publishings/PublishingResultsView.vue
 vi.mock('@/api/surveys', async (importOriginal) => ({
   ...await importOriginal(),
   deleteIndividualResponse: vi.fn(),
+  downloadExcel: vi.fn(),
+  downloadResponseWord: vi.fn(),
   getIndividualResponses: vi.fn(),
   getPublishing: vi.fn(),
   getResults: vi.fn(),
@@ -70,9 +72,8 @@ describe('удаление ответа в результатах', () => {
     const wrapper = await openResults(false)
     try {
       expect(wrapper.text()).toContain('Ответ 1')
-      expect(wrapper.get('a[href$=".docx"]').attributes('href')).toBe(
-        '/api/v1/publishings/5/responses/9007199254740993/export.docx',
-      )
+      await button(wrapper, 'Скачать анкету в Word').trigger('click')
+      expect(api.downloadResponseWord).toHaveBeenLastCalledWith('5', answer.id)
       expect(button(wrapper, 'Удалить ответ')).toBeUndefined()
     } finally {
       wrapper.unmount()
@@ -105,8 +106,10 @@ it('применяет выбор публикаций и вариантов к 
     const selection = { publications: ['8'], options: ['101', '109'] }
     expect(api.getIndividualResponses).toHaveBeenLastCalledWith('5', false, 1, selection)
     expect(wrapper.get('h1').text()).toBe('Общая статистика')
-    expect(wrapper.get('a[href$=".docx"]').attributes('href')).toContain('/publishings/8/')
-    expect(wrapper.get('a[href*="export.xlsx"]').attributes('href')).toContain('publication=8&option=101&option=109')
+    await button(wrapper, 'Скачать анкету в Word').trigger('click')
+    expect(api.downloadResponseWord).toHaveBeenLastCalledWith('8', answer.id)
+    await button(wrapper, 'Скачать Excel').trigger('click')
+    expect(api.downloadExcel).toHaveBeenLastCalledWith('5', false, selection)
     expect(wrapper.text()).toContain('Подразделение: Отдел №11, Отдел №19')
     vi.mocked(api.getResults).mockResolvedValue({ responses: 0, in_progress: 0, questions: [] })
     await button(wrapper, 'Сводка').trigger('click')

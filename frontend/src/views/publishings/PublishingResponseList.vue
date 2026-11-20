@@ -1,7 +1,8 @@
 <script setup>
 import { computed } from 'vue'
 import { UiBadge, UiButton } from 'sk-ui'
-import { responseWordUrl } from '@/api/surveys'
+import { downloadResponseWord } from '@/api/surveys'
+import ExportButton from './ExportButton.vue'
 
 const props = defineProps({ publicationNames: { type: Object, required: true }, filtered: Boolean, responses: { type: Object, required: true }, canEdit: Boolean })
 const emit = defineEmits(['page', 'remove'])
@@ -44,9 +45,9 @@ const attemptTime = new Intl.DateTimeFormat('ru-RU', {
       </dl>
       <p v-else class="border-t border-line px-4 py-4 text-sm text-ink-muted">В этом прохождении пока нет ответов.</p>
       <div class="flex flex-wrap items-center justify-end gap-3 px-4 pb-4">
-        <a :href="responseWordUrl(item.publishing_id, item.id)" class="rounded-control px-2 py-1 text-sm font-medium text-brand-700 hover:underline">
+        <ExportButton :download="() => downloadResponseWord(item.publishing_id, item.id)" size="sm" variant="ghost">
           Скачать анкету в Word
-        </a>
+        </ExportButton>
         <UiButton v-if="canEdit" size="sm" variant="ghost" class="text-red-700" @click="emit('remove', item)">Удалить ответ</UiButton>
       </div>
     </details>

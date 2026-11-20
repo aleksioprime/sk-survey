@@ -51,8 +51,24 @@ export const getResults = (id, includeInProgress = false, selection) =>
 export const getIndividualResponses = (id, includeInProgress, page, selection) =>
   get(`/v1/publishings/${id}/responses`, { params: reportParams(includeInProgress, selection, page) })
 export const deleteIndividualResponse = (id, responseId) => http.delete(`/v1/publishings/${id}/responses/${responseId}`)
-export const responseWordUrl = (id, responseId) => `/api/v1/publishings/${id}/responses/${responseId}/export.docx`
-export const exportUrl = (id, includeInProgress = false, selection) =>
-  `/api/v1/publishings/${id}/export.xlsx?${reportParams(includeInProgress, selection)}`
+
+async function downloadExport(path, fallbackName, params) {
+  const response = await http.get(path, { params, responseType: 'blob' })
+  const encodedName = response.headers['content-disposition']?.match(/filename\*=UTF-8''([^;]+)/i)?.[1]
+  const filename = encodedName ? decodeURIComponent(encodedName) : fallbackName
+  const objectUrl = URL.createObjectURL(response.data)
+  const link = document.createElement('a')
+  link.href = objectUrl
+  link.download = filename
+  document.body.append(link)
+  link.click()
+  link.remove()
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
+}
+
+export const downloadResponseWord = (id, responseId) =>
+  downloadExport(`/v1/publishings/${id}/responses/${responseId}/export.docx`, 'Анкета.docx')
+export const downloadExcel = (id, includeInProgress = false, selection) =>
+  downloadExport(`/v1/publishings/${id}/export.xlsx`, 'Результаты.xlsx', reportParams(includeInProgress, selection))
 
 export const searchEmployees = (q, surveyId) => get('/v1/directory/employees', { params: { q, survey_id: surveyId } })

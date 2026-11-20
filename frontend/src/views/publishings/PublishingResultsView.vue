@@ -2,11 +2,12 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { errorMessage, SkeletonPage, UiBadge, UiBreadcrumbs, UiButton, UiCard, UiConfirm, UiSwitch, useUrlQuery } from 'sk-ui'
-import { deleteIndividualResponse, exportUrl, getIndividualResponses, getPublishing, getReportOptions, getResults } from '@/api/surveys'
+import { deleteIndividualResponse, downloadExcel, getIndividualResponses, getPublishing, getReportOptions, getResults } from '@/api/surveys'
 import SurveyArchiveBadge from '@/components/SurveyArchiveBadge.vue'
 import QuestionTypeIcon from '@/components/questions/QuestionTypeIcon.vue'
 import ChoiceBreakdown from '@/components/questions/ChoiceBreakdown.vue'
 import { QUESTION_TYPES } from '@/utils/questionTypes'
+import ExportButton from './ExportButton.vue'
 import PublishingResponseList from './PublishingResponseList.vue'
 import ReportFilters from './ReportFilters.vue'
 
@@ -136,12 +137,9 @@ const format = (value) => (value == null ? '-' : Number(value).toLocaleString('r
         </div>
         <div class="flex flex-wrap items-center gap-3">
           <UiSwitch v-model="includeInProgress" label="Учитывать неотправленные" />
-          <a
-            :href="exportUrl(props.id, includeInProgress, selection)"
-            class="inline-flex h-10 items-center rounded-control bg-brand-600 px-4 font-medium text-white hover:bg-brand-700"
-          >
+          <ExportButton :download="() => downloadExcel(props.id, includeInProgress, selection)">
             Скачать Excel
-          </a>
+          </ExportButton>
         </div>
       </div>
 
