@@ -91,6 +91,7 @@ class OptionIn(BaseModel):
     value: str = Field(default='', max_length=255)
     score: float | None = None
     is_active: bool = True
+    allows_text: bool = False
     exclude_from_base: bool = False
 
 
@@ -102,6 +103,7 @@ class OptionOut(ORMModel):
     score: float | None
     order: int
     is_active: bool
+    allows_text: bool
     exclude_from_base: bool
 
 
@@ -144,6 +146,8 @@ class QuestionIn(BaseModel):
     def _check(self):
         if self.question_type in ('single_choice', 'multiple_choice', 'ranking') and len(self.options) < 2:
             raise ValueError('Добавьте хотя бы два варианта ответа')
+        if any(o.allows_text for o in self.options) and self.question_type not in ('single_choice', 'multiple_choice'):
+            raise ValueError('Текст к варианту доступен в вопросах с одиночным или множественным выбором')
         if self.is_dropdown and self.question_type != 'single_choice':
             raise ValueError('Выпадающий список доступен только при выборе одного варианта')
         if self.question_type in MATRIX_TYPES:

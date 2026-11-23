@@ -393,3 +393,55 @@ async def test_combined_filtered_report(db, client, monkeypatch):
         assert [p['id'] for p in visible] == [str(publication['id'])]
         for route in ('results', 'responses', 'export.xlsx'):
             assert (await observer.get(f'{base}/{route}', params=params)).status_code == 404
+
+
+@pytest.mark.parametrize('kind', ['single_choice', 'multiple_choice'])
+async def test_choice_text_from_selection_to_exports(db, client, kind):
+    await login_employee(db, client)
+    survey = (await client.post('/api/v1/surveys', json={'title': 'Инструменты'})).json()
+    base = f'/api/v1/surveys/{survey["id"]}'
+    question = (
+        await client.post(
+            f'{base}/questions',
+            json={
+                'text': 'Что используете?',
+                'question_type': kind,
+                'options': [{'title': 'Из списка'}, {'title': 'Другое', 'allows_text': True}],
+            },
+        )
+    ).json()
+    normal, other = [o['id'] for o in question['options']]
+    pub = (await client.post(f'{base}/publishings', json={'title': 'Сотрудники'})).json()
+    public = f'/api/v1/public/s/{pub["public_token"]}'
+    form = (await client.get(public)).json()
+    assert [o['allows_text'] for o in form['questions'][0]['options']] == [False, True]
+    start = (await client.post(f'{public}/responses')).json()
+    headers = {'X-Response-Token': start['response_token']}
+    current = '/api/v1/public/responses/current'
+    url = f'{current}/answers/{question["id"]}'
+    chosen = {'option_id': other} if kind == 'single_choice' else {'option_ids': [other]}
+    other_text = {str(other): 'Локальная модель'}
+    for invalid in (normal, other + 1):
+        assert (
+            await client.put(url, json={**chosen, 'option_texts': {str(invalid): 'лишнее'}}, headers=headers)
+        ).status_code == 400
+
+    async def save_other():
+        saved = await client.put(url, json={**chosen, 'option_texts': other_text}, headers=headers)
+        assert saved.json()['option_texts'] == other_text
+
+    await save_other()
+    assert (await client.get(current, headers=headers)).json()['answers'][0]['option_texts'] == other_text
+    cleared = await client.put(url, json={}, headers=headers)
+    assert cleared.json()['option_texts'] == {}
+    await save_other()
+    assert (await client.post(f'{current}/submit', headers=headers)).status_code == 200
+    result = f'/api/v1/publishings/{pub["id"]}'
+    summary = (await client.get(result + '/results')).json()['questions'][0]
+    label = 'Другое: Локальная модель'
+    assert summary['options'][1]['count'] == 1
+    assert summary['texts'][0]['text'] == label
+    sheet = load_workbook(BytesIO((await client.get(result + '/export.xlsx')).content))['Ответы']
+    assert sheet['B2'].value == label
+    word = await client.get(f'{result}/responses/{start["response_id"]}/export.docx')
+    assert label in [p.text for p in Document(BytesIO(word.content)).paragraphs]

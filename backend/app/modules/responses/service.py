@@ -223,6 +223,8 @@ async def _apply(db: AsyncSession, question: Question, answer: Answer, data: Ans
         'option_id',
     ):
         setattr(answer, field, None)
+    previous_texts = answer.option_texts
+    answer.option_texts = {}
     answer.selected_options = []
     answer.ranking = []
     answer.matrix_choices = {}
@@ -285,6 +287,16 @@ async def _apply(db: AsyncSession, question: Question, answer: Answer, data: Ans
         answer.ranking = [RankingItem(option_id=oid, rank=rank) for rank, oid in enumerate(ranked, 1)]
     elif kind == 'scale':
         await _apply_scale(db, question, answer, data)
+
+    if kind in ('single_choice', 'multiple_choice'):
+        chosen = [answer.option_id] if kind == 'single_choice' else answer.option_ids
+        allowed = {str(i) for i in chosen if i is not None and options[i].allows_text}
+        if data.option_texts.keys() - allowed:
+            raise AnswerError('Уточнение доступно только для выбранного варианта с текстовым полем')
+        texts = data.option_texts if 'option_texts' in data.model_fields_set else previous_texts
+        answer.option_texts = {key: value.strip() for key, value in texts.items() if key in allowed and value.strip()}
+    elif data.option_texts:
+        raise AnswerError('Этот вопрос не поддерживает уточнения к вариантам')
 
 
 async def _apply_scale(db: AsyncSession, question: Question, answer: Answer, data: AnswerIn) -> None:

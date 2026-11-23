@@ -132,6 +132,16 @@ def summarize(data: Dataset) -> PublishingResults:
                 breakdown.excluded = [o for o in breakdown.excluded if o.id in selected_options]
                 result.hidden_options_count = option_count - len(breakdown.options) - len(breakdown.excluded)
             result.options = breakdown.options
+            for answer in given:
+                if not answer.option_texts:
+                    continue
+                details = [
+                    f'{option.title}: {answer.option_texts[str(option.id)]}'
+                    for option in question.options
+                    if str(option.id) in answer.option_texts and (not selected_options or option.id in selected_options)
+                ]
+                if details:
+                    result.texts.append(TextAnswer(response_id=answer.response_id, text='\n'.join(details)))
         elif kind in MATRIX_TYPES:
             result.answered = sum(bool(a.matrix_choices) for a in given)
             for row in question.matrix_rows:
@@ -269,6 +279,10 @@ def answer_text(question: Question, answer: Answer | None, scale: Scale | None, 
     if kind == 'rich_text':
         return answer.rich_text_value or ''
     titles = {o.id: o.title for o in question.options}
+    for key, value in answer.option_texts.items():
+        oid = int(key)
+        if oid in titles:
+            titles[oid] = f'{titles[oid]}: {value}'
     if kind == 'single_choice':
         return titles.get(answer.option_id, '')
     if kind == 'multiple_choice':

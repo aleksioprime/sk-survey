@@ -184,6 +184,7 @@ class Option(IdMixin, TimestampMixin, Base):
     order: Mapped[int] = mapped_column(Integer, default=0, server_default='0')
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default='true')
 
+    allows_text: Mapped[bool] = mapped_column(Boolean, default=False, server_default='false')
     exclude_from_base: Mapped[bool] = mapped_column(Boolean, default=False, server_default='false')
 
     question: Mapped[Question] = relationship(back_populates='options')

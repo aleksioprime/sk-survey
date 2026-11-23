@@ -58,6 +58,7 @@ const emptyAnswer = () => ({
   scale_item_id: null,
   option_id: null,
   option_ids: [],
+  option_texts: {},
   ranking: [],
   matrix_choices: {},
   text_rows: [],

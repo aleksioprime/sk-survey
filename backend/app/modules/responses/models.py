@@ -66,6 +66,7 @@ class Answer(IdMixin, TimestampMixin, Base):
     is_skipped: Mapped[bool] = mapped_column(Boolean, default=False, server_default='false')
 
     text_rows: Mapped[list[str]] = mapped_column(JSONB, default=list, server_default='[]')
+    option_texts: Mapped[dict[str, str]] = mapped_column(JSONB, default=dict, server_default='{}')
     matrix_choices: Mapped[dict[str, list[int]]] = mapped_column(JSONB, default=dict, server_default='{}')
 
     response: Mapped[Response] = relationship(back_populates='answers')

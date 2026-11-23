@@ -269,6 +269,7 @@ async def copy_survey(db: AsyncSession, source: Survey, user: User) -> Survey:
                 description=o.description,
                 value=o.value,
                 score=o.score,
+                allows_text=o.allows_text,
                 exclude_from_base=o.exclude_from_base,
                 order=o.order,
                 is_active=o.is_active,
@@ -439,7 +440,14 @@ async def update_question(db: AsyncSession, question: Question, data: QuestionIn
         option = existing.pop(item.id, None) if item.id else None
         if option is None:
             option = Option(question_id=question.id)
-        for field, value in item.model_dump(exclude={'id'}).items():
+        changes = item.model_dump(exclude={'id'})
+        if (
+            item.id
+            and 'allows_text' not in item.model_fields_set
+            and data.question_type in ('single_choice', 'multiple_choice')
+        ):
+            changes.pop('allows_text')
+        for field, value in changes.items():
             setattr(option, field, value)
         option.order = index
         kept.append(option)

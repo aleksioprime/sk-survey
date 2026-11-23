@@ -42,6 +42,7 @@ const answered = computed(() => (source?.answers_count || 0) > 0)
 const isMatrix = computed(() => MATRIX_TYPES.includes(form.value.question_type))
 const lockedMatrix = computed(() => isMatrix.value && answered.value)
 const hasOptions = computed(() => isMatrix.value || ['single_choice', 'multiple_choice', 'ranking'].includes(form.value.question_type))
+const supportsOptionText = computed(() => ['single_choice', 'multiple_choice'].includes(form.value.question_type))
 const supportsExclusion = computed(() => hasOptions.value && form.value.question_type !== 'ranking')
 const exclusionHintId = useId()
 const exclusionHint = ref(null)
@@ -125,7 +126,16 @@ function save() {
     is_dropdown: f.question_type === 'single_choice' && f.is_dropdown,
     matrix_rows: isMatrix.value ? f.matrix_rows.map((row) => ({ ...row, title: row.title.trim() })) : [],
     options: hasOptions.value
-      ? f.options.filter((o) => o.title.trim()).map((o) => ({ id: o.id, title: o.title.trim(), description: o.description || '', value: o.value || '', score: o.score ?? null, is_active: o.is_active ?? true, exclude_from_base: supportsExclusion.value && !!o.exclude_from_base }))
+      ? f.options.filter((o) => o.title.trim()).map((o) => ({
+          id: o.id,
+          title: o.title.trim(),
+          description: o.description || '',
+          value: o.value || '',
+          score: o.score ?? null,
+          is_active: o.is_active ?? true,
+          exclude_from_base: supportsExclusion.value && !!o.exclude_from_base,
+          allows_text: supportsOptionText.value && !!o.allows_text,
+        }))
       : [],
     ranges: isScale.value
       ? f.ranges.filter((r) => r.title.trim()).map((r) => ({ title: r.title.trim(), from_value: Number(r.from_value), to_value: Number(r.to_value) }))
@@ -255,6 +265,12 @@ function save() {
               <UiButton size="sm" variant="ghost" class="text-ink-muted hover:text-red-600" :aria-label="`Удалить вариант ${index + 1}`" @click="removeOption(index)">✕</UiButton>
             </template>
           </div>
+          <UiSwitch
+            v-if="supportsOptionText"
+            v-model="option.allows_text"
+            label="Поле для уточнения при выборе"
+            :aria-label="`Поле для уточнения у варианта ${index + 1}`"
+          />
           <div v-if="supportsExclusion" class="relative min-w-0" @mouseleave="exclusionHint = null" @keydown.esc.stop="exclusionHint = null">
             <label class="flex w-fit items-center gap-2 text-xs text-ink-muted" @mouseenter="exclusionHint = index">
               <input

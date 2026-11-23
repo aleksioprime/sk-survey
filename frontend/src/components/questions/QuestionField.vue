@@ -62,8 +62,20 @@ function toggleOption(optionId) {
   const ids = model.value.option_ids || []
   const next = ids.includes(optionId) ? ids.filter((i) => i !== optionId) : [...ids, optionId]
   if (props.question.max_selections && next.length > props.question.max_selections) return
-  update({ option_ids: next })
+  const option_texts = { ...model.value.option_texts }
+  if (!next.includes(optionId)) delete option_texts[optionId]
+  update({ option_ids: next, option_texts })
 }
+
+function selectOption(optionId) {
+  if (optionId !== model.value.option_id) update({ option_id: optionId, option_texts: {} })
+}
+
+function setOptionText(optionId, text) {
+  update({ option_texts: { ...model.value.option_texts, [optionId]: text } })
+}
+
+const selectedSingle = computed(() => props.options.find((option) => option.id === model.value.option_id))
 
 const ranked = computed(() => (model.value.ranking || []).map((oid) => props.options.find((o) => o.id === oid)).filter(Boolean))
 const unranked = computed(() => props.options.filter((o) => !(model.value.ranking || []).includes(o.id)))
@@ -198,7 +210,7 @@ const choiceClass = (active) =>
       :disabled="disabled"
       :invalid="!!error"
       :aria-label="question.text"
-      @update:model-value="update({ option_id: $event })"
+      @update:model-value="selectOption($event)"
     >
       <option :value="null" disabled>Выберите вариант</option>
       <option v-for="option in options" :key="option.id" :value="option.id">{{ option.title }}</option>
@@ -213,7 +225,7 @@ const choiceClass = (active) =>
         :aria-checked="model.option_id === option.id"
         class="flex items-start gap-3 rounded-control border px-4 py-3 text-left transition"
         :class="choiceClass(model.option_id === option.id)"
-        @click="update({ option_id: option.id })"
+        @click="selectOption(option.id)"
       >
         <span
           class="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full border-2"
@@ -231,23 +243,30 @@ const choiceClass = (active) =>
 
     <div v-else-if="question.question_type === 'multiple_choice'" class="grid gap-2">
       <p v-if="limits" class="text-sm text-ink-muted">{{ limits }}</p>
-      <label
-        v-for="option in options"
-        :key="option.id"
-        class="flex items-start gap-3 rounded-control border px-4 py-3 transition"
-        :class="choiceClass((model.option_ids || []).includes(option.id))"
-      >
-        <input
-          type="checkbox"
-          class="mt-1 size-4 accent-brand-600"
-          :checked="(model.option_ids || []).includes(option.id)"
-          @change="toggleOption(option.id)"
+      <div v-for="option in options" :key="option.id" class="grid gap-2">
+        <label
+          class="flex items-start gap-3 rounded-control border px-4 py-3 transition"
+          :class="choiceClass((model.option_ids || []).includes(option.id))"
+        >
+          <input
+            type="checkbox"
+            class="mt-1 size-4 accent-brand-600"
+            :checked="(model.option_ids || []).includes(option.id)"
+            @change="toggleOption(option.id)"
+          />
+          <span>
+            {{ option.title }}
+            <span v-if="option.description" class="block text-sm text-ink-muted">{{ option.description }}</span>
+          </span>
+        </label>
+        <UiInput
+          v-if="option.allows_text && model.option_ids?.includes(option.id)"
+          :label="`Уточните ответ «${option.title}»`"
+          :model-value="model.option_texts?.[option.id] || ''"
+          maxlength="1000"
+          @update:model-value="setOptionText(option.id, $event)"
         />
-        <span>
-          {{ option.title }}
-          <span v-if="option.description" class="block text-sm text-ink-muted">{{ option.description }}</span>
-        </span>
-      </label>
+      </div>
     </div>
 
     <div v-else-if="question.question_type === 'scale'" class="grid gap-3">
@@ -321,5 +340,12 @@ const choiceClass = (active) =>
     </div>
 
     <p v-if="error" :id="`${id}-error`" role="alert" class="text-sm text-red-600">{{ error }}</p>
+    <UiInput
+      v-if="question.question_type === 'single_choice' && selectedSingle?.allows_text"
+      :label="`Уточните ответ «${selectedSingle.title}»`"
+      :model-value="model.option_texts?.[selectedSingle.id] || ''"
+      maxlength="1000"
+      @update:model-value="setOptionText(selectedSingle.id, $event)"
+    />
   </fieldset>
 </template>

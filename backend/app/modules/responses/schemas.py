@@ -13,6 +13,7 @@ class ORMModel(BaseModel):
 
 
 class PublicOption(ORMModel):
+    allows_text: bool
     id: int
     title: str
     description: str
@@ -64,6 +65,10 @@ class AnswerIn(BaseModel):
     boolean_value: bool | None = None
     scale_item_id: int | None = None
     option_id: int | None = None
+    option_texts: dict[
+        Annotated[str, Field(pattern=r'^[1-9][0-9]{0,18}$')],
+        Annotated[str, Field(max_length=1000, pattern=r'^[^\x00-\x1f]*$')],
+    ] = Field(default={}, max_length=200)
     option_ids: list[int] = Field(default=[], max_length=200)
     ranking: list[int] = Field(default=[], max_length=200, description='ID вариантов по порядку, первый - главный')
     matrix_choices: dict[str, Annotated[list[int], Field(min_length=1, max_length=50)]] = Field(
@@ -88,6 +93,7 @@ class AnswerOut(ORMModel):
     boolean_value: bool | None
     scale_item_id: int | None
     option_id: int | None
+    option_texts: dict[str, str]
     option_ids: list[int]
     ranking_ids: list[int]
     text_rows: list[str]
